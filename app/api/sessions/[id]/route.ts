@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { sessionDeleteQuerySchema, sessionUpdateSchema } from '@/lib/schemas/session';
 import { ApiError, handleApiError, parseJsonBody, requireApiUserId } from '@/lib/api';
-import { resolveFinishedAt } from '@/lib/session-finish';
+import { updateOwnedSession } from '@/lib/live-session';
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -45,34 +45,15 @@ export async function PUT(req: Request, props: Params) {
   const params = await props.params;
   try {
     const userId = await requireApiUserId();
-    const session = await db.session.findFirst({ where: { id: params.id, userId } });
+    // Ownership is checked before the body is read, as before.
+    const session = await db.session.findFirst({
+      where: { id: params.id, userId },
+      select: { id: true },
+    });
     if (!session) throw new ApiError(404, 'Session not found.');
     const data = await parseJsonBody(req, sessionUpdateSchema);
-
-    // A late Finish ends the session at its last set, not at the tap (issue
-    // #571, lib/session-finish.ts). As before, every `finish: true` stamps the
-    // session again, including one sent for an already finished session.
-    let finishedAt = session.finishedAt;
-    if (data.finish) {
-      const lastSet = await db.set.findFirst({
-        where: { sessionId: session.id, session: { userId } },
-        orderBy: { completedAt: 'desc' },
-        select: { completedAt: true },
-      });
-      finishedAt = resolveFinishedAt({
-        now: new Date(),
-        startedAt: session.startedAt,
-        lastSetAt: lastSet?.completedAt ?? null,
-      });
-    }
-
-    const updated = await db.session.update({
-      where: { id: params.id, userId },
-      data: {
-        notes: data.notes ?? session.notes,
-        finishedAt,
-      },
-    });
+    // A late Finish ends the session at its last set (lib/live-session.ts).
+    const updated = await updateOwnedSession(userId, params.id, data);
     return NextResponse.json(updated);
   } catch (err) {
     return handleApiError(err);
