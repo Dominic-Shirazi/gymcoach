@@ -87,7 +87,9 @@ export async function getOwnedSessionState(userId: string, sessionId?: string) {
     select: { unit: true, deloadUntil: true, bodyweight: true },
   });
   const unit: WeightUnit = user?.unit ?? 'KG';
-  const display = (kg: number) => roundWeight(toDisplayWeight(kg, unit), 2);
+  // Same rounding as the app shows (one decimal): a gym list stored in kg
+  // (18.14 for a 40 lb dumbbell) reads back as 40, not 39.99.
+  const display = (kg: number) => roundWeight(toDisplayWeight(kg, unit));
 
   const rows = session.workout?.exercises ?? toRunnerExercises(session.exercises);
   const rowBlocks = blockIndexByRow(rows);
