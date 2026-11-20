@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { sessionStartSchema } from '@/lib/schemas/session';
-import { ApiError, handleApiError, parseJsonBody, requireApiUserId } from '@/lib/api';
+import { handleApiError, parseJsonBody, requireApiUserId } from '@/lib/api';
+import { startOwnedSession } from '@/lib/live-session';
 
 export async function GET() {
   try {
@@ -23,62 +24,15 @@ export async function GET() {
 }
 
 // POST /api/sessions: starts a new session on one of the user's workouts, or a
-// freestyle session when no workout is given (issue #388).
-// Returns the unfinished session that already exists on the same workout
-// instead of creating a second one (avoids zombie sessions created by a
-// double-click); a freestyle start resumes the unfinished freestyle session.
+// freestyle session when no workout is given (issue #388). An unfinished
+// session on the same workout is returned (200) instead of a second one
+// (lib/live-session.ts).
 export async function POST(req: Request) {
   try {
     const userId = await requireApiUserId();
-    const { workoutId, gymId } = await parseJsonBody(req, sessionStartSchema);
-
-    const workout = workoutId
-      ? await db.workout.findFirst({
-          where: { id: workoutId, program: { userId } },
-        })
-      : null;
-    if (workoutId && !workout) {
-      throw new ApiError(404, 'Session not found.');
-    }
-
-    const selectedGymId =
-      gymId ??
-      (await db.user.findUnique({ where: { id: userId }, select: { activeGymId: true } }))
-        ?.activeGymId ??
-      null;
-    if (selectedGymId) {
-      const gym = await db.gym.findFirst({
-        where: { id: selectedGymId, userId },
-        select: { id: true },
-      });
-      if (!gym) throw new ApiError(400, 'Invalid gym.');
-    }
-
-    // A freestyle start resumes only a session that was started as one. An
-    // open session that lost its workout or its whole program also has no
-    // workoutId and no programId, so the explicit marker decides.
-    const inProgress = await db.session.findFirst({
-      where: workout
-        ? { userId, workoutId: workout.id, finishedAt: null }
-        : { userId, freestyle: true, finishedAt: null },
-      orderBy: { startedAt: 'desc' },
-    });
-    if (inProgress) {
-      // We return the existing session instead of creating a new one:
-      // allows resuming cleanly after a reload.
-      return NextResponse.json(inProgress, { status: 200 });
-    }
-
-    const created = await db.session.create({
-      data: {
-        userId,
-        workoutId: workout?.id ?? null,
-        programId: workout?.programId ?? null,
-        freestyle: !workout,
-        gymId: selectedGymId,
-      },
-    });
-    return NextResponse.json(created, { status: 201 });
+    const input = await parseJsonBody(req, sessionStartSchema);
+    const { session, created } = await startOwnedSession(userId, input);
+    return NextResponse.json(session, { status: created ? 201 : 200 });
   } catch (err) {
     return handleApiError(err);
   }
