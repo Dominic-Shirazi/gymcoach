@@ -80,6 +80,7 @@ services:
       OPENAI_COMPATIBLE_MODEL: ${OPENAI_COMPATIBLE_MODEL:-}
       OPENAI_COMPATIBLE_API_KEY: ${OPENAI_COMPATIBLE_API_KEY:-}
       OPENAI_COMPATIBLE_MAX_TOKENS: ${OPENAI_COMPATIBLE_MAX_TOKENS:-}
+      OPENAI_COMPATIBLE_THINKING: ${OPENAI_COMPATIBLE_THINKING:-}
       # codex-lb: an OpenAI Responses-compatible endpoint. From inside this container,
       # a server on the host is reached at host.docker.internal (see
       # extra_hosts below), not localhost. Empty values use the code defaults.

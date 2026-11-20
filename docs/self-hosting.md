@@ -484,6 +484,14 @@ OPENAI_COMPATIBLE_MODEL=llama3.1
   have asked for (the coach and program generation ask for 8000, the chat
   for 4096). Lower it when the model's context window is small, raise it for
   a reasoning model whose thinking counts against the budget.
+- `OPENAI_COMPATIBLE_THINKING` is optional: `off` or `on`. It sends
+  `chat_template_kwargs: {"enable_thinking": false}` (or `true`) with every
+  call, the switch llama.cpp server, vLLM and SGLang pass to a Qwen-style
+  chat template. A hybrid reasoning model then answers without thinking
+  first: the set parse asks for only 200 tokens and is otherwise cut off
+  before its answer, and every call is several times faster. Prompt
+  switches such as `/no_think` are not sent, because not every template
+  honours them. Unset, no field is sent and the server's default applies.
 - A redirect from the server is refused, not followed, so the prompt is never
   re-sent to an address you did not name. Point the base URL at the final
   address.

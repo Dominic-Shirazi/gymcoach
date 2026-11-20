@@ -5,6 +5,7 @@ import { getLlmProvider, resolveProviderId } from './index';
 import {
   OpenAiCompatibleProvider,
   resetOpenAiCompatibleLogForTests,
+  resolveOpenAiCompatibleThinking,
   validateOpenAiCompatibleBaseUrl,
 } from './openai-compatible';
 import { OpenRouterProvider } from './openrouter';
@@ -25,6 +26,7 @@ const ENV_KEYS = [
   'OPENAI_COMPATIBLE_MODEL',
   'OPENAI_COMPATIBLE_API_KEY',
   'OPENAI_COMPATIBLE_MAX_TOKENS',
+  'OPENAI_COMPATIBLE_THINKING',
   'OPENROUTER_API_KEY',
   'OPENROUTER_MODEL',
   'OPENROUTER_APP_NAME',
@@ -40,6 +42,7 @@ beforeEach(() => {
   resetOpenAiCompatibleLogForTests();
   // The provider logs a refused setting; keep the test output quiet.
   vi.spyOn(console, 'error').mockImplementation(() => {});
+  vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -300,6 +303,69 @@ describe('OpenAiCompatibleProvider', () => {
     },
   );
 
+  it('sends no chat_template_kwargs when OPENAI_COMPATIBLE_THINKING is unset', async () => {
+    configure();
+    const fetchFn = mockFetch(() => reply('ok'));
+    await new OpenAiCompatibleProvider().complete(ASK);
+    const body = JSON.parse(fetchFn.mock.calls[0]![1].body as string);
+    expect('chat_template_kwargs' in body).toBe(false);
+  });
+
+  it.each([
+    ['off', false],
+    [' OFF ', false],
+    ['false', false],
+    ['0', false],
+    ['on', true],
+    ['true', true],
+    ['1', true],
+  ])(
+    'OPENAI_COMPATIBLE_THINKING=%j sends enable_thinking=%j on complete and stream',
+    async (value, enabled) => {
+      configure({ OPENAI_COMPATIBLE_THINKING: value });
+      const fetchFn = mockFetch(() => ({
+        ...reply('ok'),
+        body: sseBody(['data: {"choices":[{"delta":{"content":"ok"}}]}\n\n', 'data: [DONE]\n\n']),
+      }));
+      const p = new OpenAiCompatibleProvider();
+      await p.complete(ASK);
+      for await (const _ of p.stream(ASK)) void _;
+      for (const [, init] of fetchFn.mock.calls) {
+        const body = JSON.parse(init.body as string);
+        expect(body.chat_template_kwargs).toEqual({ enable_thinking: enabled });
+      }
+      expect(fetchFn).toHaveBeenCalledTimes(2);
+    },
+  );
+
+  it('ignores an unknown OPENAI_COMPATIBLE_THINKING value and warns once', async () => {
+    configure({ OPENAI_COMPATIBLE_THINKING: 'maybe' });
+    const fetchFn = mockFetch(() => reply('ok'));
+    const p = new OpenAiCompatibleProvider();
+    await p.complete(ASK);
+    await p.complete(ASK);
+    const body = JSON.parse(fetchFn.mock.calls[0]![1].body as string);
+    expect('chat_template_kwargs' in body).toBe(false);
+    expect(console.warn).toHaveBeenCalledTimes(1);
+    expect(String(vi.mocked(console.warn).mock.calls[0]![0])).toContain(
+      'OPENAI_COMPATIBLE_THINKING',
+    );
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it('the thinking switch never replaces the model, the messages or the budget', async () => {
+    configure({ OPENAI_COMPATIBLE_THINKING: 'off', OPENAI_COMPATIBLE_MAX_TOKENS: '512' });
+    const fetchFn = mockFetch(() => reply('ok'));
+    await new OpenAiCompatibleProvider().complete({ ...ASK, maxTokens: 200 });
+    const body = JSON.parse(fetchFn.mock.calls[0]![1].body as string);
+    expect(body.model).toBe('llama3.1');
+    expect(body.max_tokens).toBe(512);
+    expect(body.messages).toEqual([
+      { role: 'system', content: 'SYSTEM' },
+      { role: 'user', content: 'payload' },
+    ]);
+  });
+
   it('refuses a redirect instead of re-sending the prompt and the key elsewhere', async () => {
     configure({ OPENAI_COMPATIBLE_API_KEY: 'sk-local-secret' });
     const fetchFn = mockFetch(() => ({
@@ -514,6 +580,19 @@ describe('OpenAiCompatibleProvider', () => {
       status: 502,
       message: 'The model server returned no response body.',
     });
+  });
+});
+
+describe('resolveOpenAiCompatibleThinking', () => {
+  it('reads unset and blank as the server default', () => {
+    expect(resolveOpenAiCompatibleThinking(undefined)).toEqual({ ok: true, enabled: undefined });
+    expect(resolveOpenAiCompatibleThinking('  ')).toEqual({ ok: true, enabled: undefined });
+  });
+
+  it('refuses anything that is not on or off', () => {
+    for (const value of ['maybe', 'no_think', 'yes', '2']) {
+      expect(resolveOpenAiCompatibleThinking(value).ok).toBe(false);
+    }
   });
 });
 
