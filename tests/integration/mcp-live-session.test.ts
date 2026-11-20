@@ -274,6 +274,21 @@ describe('GymCoach MCP live session', () => {
     expect(await db.set.count({ where: { sessionId: session!.id } })).toBe(0);
   });
 
+  it("announces gym loads in the trainee's unit as the app shows them", async () => {
+    const { user, workout } = await seed('mcp-live-rounding@test.dev');
+    // A 40 lb dumbbell saved through the gym form is stored as 18.14 kg.
+    const gym = await db.gym.create({
+      data: { userId: user.id, name: 'Home', dumbbellWeights: [13.61, 18.14, 22.68] },
+    });
+    await db.user.update({ where: { id: user.id }, data: { activeGymId: gym.id } });
+    const client = await connect(user.id);
+    await call(client, 'start_session', { workoutId: workout.id });
+
+    const state = await call(client, 'log_set', { weight: 40, reps: 8, rir: 2 });
+    expect(state.nextSet!.weightKg).toBeCloseTo(18.14, 2);
+    expect(state.nextSet!.weight).toBe(40);
+  });
+
   it('refuses a strength set without weight and reps instead of inventing them', async () => {
     const { user, workout } = await seed('mcp-live-partial@test.dev');
     const client = await connect(user.id);
