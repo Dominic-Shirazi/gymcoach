@@ -170,6 +170,17 @@ describe('GymCoach MCP server', () => {
             'activate_program',
           ],
         },
+        liveSession: {
+          read: ['get_session_state'],
+          write: [
+            'start_session',
+            'log_set',
+            'log_set_from_text',
+            'edit_last_set',
+            'delete_last_set',
+            'finish_session',
+          ],
+        },
       },
     });
     // A write-enabled connection is told the confirmation rule, not the read-only refusal.
@@ -186,7 +197,7 @@ describe('GymCoach MCP server', () => {
       ...(group.write ?? []).map((name) => ({ name, write: true })),
     ]);
     const groupedNames = grouped.map((entry) => entry.name);
-    expect(groupedNames).toHaveLength(23);
+    expect(groupedNames).toHaveLength(30);
     // No tool sits in two groups, and none is listed without a group.
     expect(new Set(groupedNames).size).toBe(groupedNames.length);
     expect([...allTools].sort()).toEqual([...groupedNames].sort());
@@ -207,7 +218,7 @@ describe('GymCoach MCP server', () => {
     expect(instructions.contents[0]).toMatchObject({ text: GYMCOACH_MCP_INSTRUCTIONS });
     // Write tools are no longer program-only: the rule must name every domain.
     expect(GYMCOACH_MCP_INSTRUCTIONS).toMatch(
-      /Write tools \(programs, gym inventory, equipment history, profile properties\) change saved data/,
+      /Write tools \(programs, gym inventory, equipment history, profile properties, live sessions\) change saved data/,
     );
     expect(GYMCOACH_MCP_INSTRUCTIONS).toMatch(
       /Update bodyweight only through update_user_properties/,

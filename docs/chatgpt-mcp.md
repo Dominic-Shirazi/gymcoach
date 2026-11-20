@@ -71,6 +71,10 @@ Read tools:
   equipment assignment, with candidate equipment)
 - `list_historical_equipment_backfills` (audit trail of applied backfills, to
   find the audit ID for an undo)
+- `get_session_state` (the unfinished or given workout session: per exercise the
+  targets, form cue, sets done and completion; the current exercise; the next
+  set's weight in kg and in the trainee's unit, reps, RIR and `toFailure`; the
+  last set and the rest countdown)
 
 Write tools:
 
@@ -94,6 +98,20 @@ Write tools:
   up to 500 past sets that have none; never overwrites an existing assignment)
 - `undo_historical_equipment_backfill` (revert one audited backfill, only while
   every affected set still matches what was applied)
+- `start_session` (start a session on a program workout, or resume the
+  unfinished one; answers with the session state)
+- `log_set` (a reported set on the current exercise: weight in the trainee's
+  unit and reps, or a cardio duration)
+- `log_set_from_text` (parses the trainee's words with the app's set parser and
+  logs the set; the words are kept as the set note)
+- `edit_last_set` (correct weight, reps or RIR of the most recent set)
+- `delete_last_set` (needs `confirmed: true`)
+- `finish_session` (optional session notes; a late finish is dated at the last
+  set)
+
+The live-session tools write through the same service as the app's session
+screens, so a voice coach and the app always agree on set numbers, goals and
+finish times.
 
 ## Health check
 

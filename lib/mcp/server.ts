@@ -43,6 +43,21 @@ import {
 import { guardToolHandler } from '@/lib/mcp/errors';
 import { consumeMcpWriteQuota, MCP_MAX_TOOL_INPUT_ELEMENTS } from '@/lib/mcp/limits';
 import { updateUserProperties } from '@/lib/user-properties';
+import type { WeightUnit } from '@/lib/prisma-client';
+import {
+  deleteOwnedSet,
+  logOwnedSet,
+  startOwnedSession,
+  updateOwnedSession,
+  updateOwnedSet,
+} from '@/lib/live-session';
+import { getOwnedSessionState, type LiveSessionState } from '@/lib/live-session-state';
+import { setInputSchema, setUpdateSchema } from '@/lib/schemas/set';
+import { aiParseSetWithFailure } from '@/lib/set-parse';
+import { describeLlmFailure } from '@/lib/llm/errors';
+import { getLlmProvider } from '@/lib/llm';
+import { rateLimit } from '@/lib/rate-limit';
+import { fromDisplayWeight } from '@/lib/units';
 
 export const GYMCOACH_MCP_INSTRUCTIONS = `GymCoach stores the trainee's profile, gyms, equipment, programs, workout history, sets, RIR, goals and recovery signals.
 
@@ -52,7 +67,9 @@ For MCP tool discovery, inspect the complete tool list once before guessing name
 
 Before changing gym inventory, read the saved gym first, explain the proposed additions or corrections, and require explicit confirmation. Do not guess machine identity, exercise links or selectable weights from ambiguous information.
 
-Write tools (programs, gym inventory, equipment history, profile properties) change saved data. Explain the proposed change before calling a write tool. Update bodyweight only through update_user_properties: it appends a history entry and syncs the current value the rest of the app reads. Newly created programs are inactive so the trainee can review them. Activate a program only when the trainee explicitly asks. To add a session (for example a cardio day) to the program the trainee already follows, call add_workout on that program rather than creating a new program. Never delete, remove or undo saved data (a program exercise, an equipment image, a historical equipment backfill) without explicit confirmation.`;
+Write tools (programs, gym inventory, equipment history, profile properties, live sessions) change saved data. Explain the proposed change before calling a write tool. Update bodyweight only through update_user_properties: it appends a history entry and syncs the current value the rest of the app reads. Newly created programs are inactive so the trainee can review them. Activate a program only when the trainee explicitly asks. To add a session (for example a cardio day) to the program the trainee already follows, call add_workout on that program rather than creating a new program. Never delete, remove or undo saved data (a program exercise, an equipment image, a historical equipment backfill) without explicit confirmation.
+
+During a workout, call get_session_state before speaking about the next set and announce its targets as returned. Log a set only after the trainee reported it: log_set for given numbers, log_set_from_text for their words (the text stays as the set note). Fix a misheard set with edit_last_set; delete_last_set and finish_session only on the trainee's request.`;
 
 interface ServerOptions {
   principal: McpPrincipal;
@@ -137,6 +154,17 @@ const MCP_CAPABILITY_GROUPS = {
       'update_program_exercise',
       'remove_program_exercise',
       'activate_program',
+    ],
+  },
+  liveSession: {
+    read: ['get_session_state'],
+    write: [
+      'start_session',
+      'log_set',
+      'log_set_from_text',
+      'edit_last_set',
+      'delete_last_set',
+      'finish_session',
     ],
   },
 } as const;
@@ -908,6 +936,317 @@ export function createGymCoachMcpServer({ principal, baseUrl }: ServerOptions): 
         db.program.update({ where: { id: programId }, data: { isActive: true } }),
       ]);
       return result({ ok: true, programId, active: true });
+    }),
+  );
+
+  // ------------------------------------------------------------------
+  // Live session: what a voice coach drives during a workout. Writes go
+  // through lib/live-session.ts, the same service as the REST routes, and
+  // every tool answers with the fresh session state.
+  // ------------------------------------------------------------------
+
+  async function liveState(sessionId?: string) {
+    const state = await getOwnedSessionState(principal.userId, sessionId);
+    if (!state) throw new Error('No active session. Start one with start_session.');
+    return state;
+  }
+
+  function liveRow(state: LiveSessionState, programExerciseId?: string) {
+    const row = programExerciseId
+      ? state.exercises.find((exercise) => exercise.programExerciseId === programExerciseId)
+      : state.currentExerciseIndex != null
+        ? state.exercises[state.currentExerciseIndex]
+        : undefined;
+    if (!row) {
+      throw new Error(
+        programExerciseId
+          ? 'Exercise not found in this session.'
+          : 'Every exercise is complete. Pass programExerciseId to log an extra set.',
+      );
+    }
+    return row;
+  }
+
+  function lastSetOf(state: LiveSessionState) {
+    if (!state.lastSet) throw new Error('No set logged in this session yet.');
+    return state.lastSet;
+  }
+
+  async function liveUnit(): Promise<WeightUnit> {
+    const user = await db.user.findUnique({
+      where: { id: principal.userId },
+      select: { unit: true },
+    });
+    return user?.unit ?? 'KG';
+  }
+
+  const sessionIdSchema = databaseIdSchema
+    .describe('Opaque GymCoach session ID. Omit to use the unfinished session.')
+    .optional();
+  const programExerciseIdSchema = databaseIdSchema
+    .describe(
+      'Opaque row ID from get_session_state exercises[].programExerciseId. Omit for the current exercise.',
+    )
+    .optional();
+  const liveWeight = z
+    .number()
+    .min(0)
+    .max(1100)
+    .describe("Load in the trainee's unit (get_session_state unit).");
+
+  server.registerTool(
+    'get_session_state',
+    {
+      title: 'Get live session state',
+      description:
+        "Reads the unfinished (or given) session: each exercise with targets, form cue, sets done and completion, the current exercise, the next set's targets (weight in kg and in the trainee's unit, reps, RIR, toFailure when targetRIR is 0), the last set and the rest countdown. Returns { session: null } when nothing is in progress.",
+      inputSchema: { sessionId: sessionIdSchema },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    guardToolHandler(async ({ sessionId }) => {
+      const state = await getOwnedSessionState(principal.userId, sessionId);
+      return result(state ? { ...state } : { session: null });
+    }),
+  );
+
+  server.registerTool(
+    'start_session',
+    {
+      title: 'Start or resume a workout session',
+      description:
+        'Starts a session on a program workout (workout IDs from get_program) and returns its state. An unfinished session on the same workout is resumed instead of creating a second one. Without workoutId, returns the unfinished session when there is one.',
+      inputSchema: {
+        workoutId: databaseIdSchema.describe('Opaque workout ID from get_program.').optional(),
+        gymId: gymIdSchema.optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    guardToolHandler(async ({ workoutId, gymId }) => {
+      requireWrite(principal);
+      if (!workoutId) {
+        const active = await getOwnedSessionState(principal.userId);
+        if (!active) {
+          throw new Error('No session in progress. Pass workoutId from get_program to start one.');
+        }
+        return result({ ok: true, created: false, ...active });
+      }
+      const { session, created } = await startOwnedSession(principal.userId, { workoutId, gymId });
+      return result({ ok: true, created, ...(await liveState(session.id)) });
+    }),
+  );
+
+  server.registerTool(
+    'log_set',
+    {
+      title: 'Log a set',
+      description:
+        "Logs a completed set on the current exercise (or programExerciseId) as the trainee reported it, then returns the new state. Strength: weight (trainee's unit) and reps, optional rir. Cardio: durationSec, optional distanceM. Never invent values the trainee did not give.",
+      inputSchema: {
+        sessionId: sessionIdSchema,
+        programExerciseId: programExerciseIdSchema,
+        weight: liveWeight.optional(),
+        reps: z.number().int().min(0).max(100).optional(),
+        rir: z.number().int().min(0).max(5).nullable().optional(),
+        durationSec: z.number().int().min(1).max(86_400).optional(),
+        distanceM: z.number().min(0).max(1_000_000).optional(),
+        isWarmup: z.boolean().optional(),
+        isDropSet: z.boolean().optional(),
+        notes: z.string().trim().max(500).optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    guardToolHandler(async ({ sessionId, programExerciseId, ...input }) => {
+      requireWrite(principal);
+      const state = await liveState(sessionId);
+      const row = liveRow(state, programExerciseId);
+      const isCardio = row.category === 'CARDIO';
+      if (!isCardio && (input.weight == null || input.reps == null)) {
+        throw new Error('A strength set needs weight and reps.');
+      }
+      const unit = await liveUnit();
+      const data = setInputSchema.parse({
+        exerciseId: row.exerciseId,
+        setNumber: row.nextSetNumber,
+        block: row.block,
+        weight: isCardio ? 0 : fromDisplayWeight(input.weight!, unit),
+        reps: isCardio ? 1 : input.reps,
+        rir: isCardio ? null : (input.rir ?? null),
+        durationSec: isCardio ? (input.durationSec ?? null) : null,
+        distanceM: isCardio ? (input.distanceM ?? null) : null,
+        isWarmup: input.isWarmup ?? false,
+        isDropSet: input.isDropSet ?? false,
+        notes: input.notes ?? null,
+      });
+      const set = await logOwnedSet(principal.userId, state.session.id, data);
+      return result({ ok: true, loggedSetId: set.id, ...(await liveState(state.session.id)) });
+    }),
+  );
+
+  server.registerTool(
+    'log_set_from_text',
+    {
+      title: 'Log a set from what the trainee said',
+      description:
+        'Parses a spoken or typed set description ("six at 40, last one was a grind") with the same parser as the app, logs it on the current exercise (or programExerciseId) and returns the parsed values and the new state. The original text is kept as the set note, so remarks like pain or form stay on record. Fails without logging when the text cannot be read as a set.',
+      inputSchema: {
+        sessionId: sessionIdSchema,
+        programExerciseId: programExerciseIdSchema,
+        text: z.string().trim().min(1).max(500),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    guardToolHandler(async ({ sessionId, programExerciseId, text }) => {
+      requireWrite(principal);
+      // Shares the REST parse route's budget: the call reaches the model.
+      const rl = rateLimit(`set-parse:${principal.userId}`, 20, 60_000);
+      if (!rl.ok) throw new Error('Too many parse requests. Please wait a moment.');
+      const state = await liveState(sessionId);
+      const row = liveRow(state, programExerciseId);
+      const unit = await liveUnit();
+      const { parsed, providerError } = await aiParseSetWithFailure(text, {
+        exerciseName: row.name,
+        kind: row.category === 'CARDIO' ? 'cardio' : 'strength',
+        unit,
+      });
+      if (providerError) {
+        throw new Error(describeLlmFailure(providerError, getLlmProvider()).message);
+      }
+      if (!parsed) {
+        throw new Error('Could not read a set from that text. Nothing was logged.');
+      }
+      const data = setInputSchema.parse({
+        exerciseId: row.exerciseId,
+        setNumber: row.nextSetNumber,
+        block: row.block,
+        ...(parsed.kind === 'strength'
+          ? {
+              weight: fromDisplayWeight(parsed.weight, unit),
+              reps: parsed.reps,
+              rir: parsed.rir ?? null,
+            }
+          : {
+              weight: 0,
+              reps: 1,
+              durationSec: parsed.durationSec,
+              distanceM: parsed.distanceM ?? null,
+              avgHr: parsed.avgHr ?? null,
+            }),
+        notes: text,
+      });
+      const set = await logOwnedSet(principal.userId, state.session.id, data);
+      return result({
+        ok: true,
+        parsed,
+        loggedSetId: set.id,
+        ...(await liveState(state.session.id)),
+      });
+    }),
+  );
+
+  server.registerTool(
+    'edit_last_set',
+    {
+      title: 'Correct the last logged set',
+      description:
+        "Corrects the weight (trainee's unit), reps or RIR of the session's most recent strength set. Omitted fields keep their logged value.",
+      inputSchema: {
+        sessionId: sessionIdSchema,
+        weight: liveWeight.optional(),
+        reps: z.number().int().min(0).max(100).optional(),
+        rir: z.number().int().min(0).max(5).nullable().optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    guardToolHandler(async ({ sessionId, weight, reps, rir }) => {
+      requireWrite(principal);
+      const state = await liveState(sessionId);
+      const last = lastSetOf(state);
+      const unit = await liveUnit();
+      const data = setUpdateSchema.parse({
+        weight: weight != null ? fromDisplayWeight(weight, unit) : last.weightKg,
+        reps: reps ?? last.reps,
+        rir: rir === undefined ? last.rir : rir,
+      });
+      await updateOwnedSet(principal.userId, last.setId, data);
+      return result({ ok: true, editedSetId: last.setId, ...(await liveState(state.session.id)) });
+    }),
+  );
+
+  server.registerTool(
+    'delete_last_set',
+    {
+      title: 'Delete the last logged set',
+      description:
+        "Deletes the session's most recent set after the trainee confirmed it (for example a set logged by mistake). The result includes the deleted set.",
+      inputSchema: { confirmed: explicitConfirmation, sessionId: sessionIdSchema },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    guardToolHandler(async ({ sessionId }) => {
+      requireWrite(principal);
+      const state = await liveState(sessionId);
+      const last = lastSetOf(state);
+      if (state.session.finishedAt) throw new Error('Session already finished.');
+      await deleteOwnedSet(principal.userId, last.setId);
+      return result({ ok: true, deleted: last, ...(await liveState(state.session.id)) });
+    }),
+  );
+
+  server.registerTool(
+    'finish_session',
+    {
+      title: 'Finish the workout session',
+      description:
+        'Finishes the unfinished (or given) session, optionally saving session notes. A late finish is dated at the last set, as in the app.',
+      inputSchema: {
+        sessionId: sessionIdSchema,
+        notes: z.string().trim().max(2000).optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    guardToolHandler(async ({ sessionId, notes }) => {
+      requireWrite(principal);
+      const state = await liveState(sessionId);
+      if (state.session.finishedAt) throw new Error('Session already finished.');
+      const finished = await updateOwnedSession(principal.userId, state.session.id, {
+        notes,
+        finish: true,
+      });
+      return result({
+        ok: true,
+        sessionId: finished.id,
+        finishedAt: finished.finishedAt?.toISOString() ?? null,
+        setsLogged: state.exercises.reduce((sum, exercise) => sum + exercise.sets.length, 0),
+      });
     }),
   );
 
