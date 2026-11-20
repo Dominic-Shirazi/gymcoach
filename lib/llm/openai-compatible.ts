@@ -70,6 +70,28 @@ export function resolveOpenAiCompatibleMaxTokens(requested: number | undefined):
   return requested ?? DEFAULT_CHAT_MAX_TOKENS;
 }
 
+// OPENAI_COMPATIBLE_THINKING turns a hybrid reasoning model's thinking off or
+// on through the chat template (`chat_template_kwargs.enable_thinking`, read
+// by llama.cpp server, vLLM and SGLang for Qwen-style templates). Thinking
+// counts against max_tokens, so with it on a short structured call such as
+// the set parse can be cut off before the answer starts, and every call is
+// several times slower. Prompt switches like /no_think are not used: not
+// every template honours them. Unset: the server's default, no field sent.
+export type ThinkingSetting = { ok: true; enabled: boolean | undefined } | { ok: false; reason: string };
+
+export function resolveOpenAiCompatibleThinking(
+  raw: string | undefined = process.env.OPENAI_COMPATIBLE_THINKING,
+): ThinkingSetting {
+  const value = raw?.trim().toLowerCase() ?? '';
+  if (!value) return { ok: true, enabled: undefined };
+  if (['off', 'false', '0'].includes(value)) return { ok: true, enabled: false };
+  if (['on', 'true', '1'].includes(value)) return { ok: true, enabled: true };
+  return {
+    ok: false,
+    reason: 'OPENAI_COMPATIBLE_THINKING must be on or off; the setting is ignored.',
+  };
+}
+
 // A refused setting is logged once per reason per process, so the operator
 // finds the cause in the server log without it repeating on every page
 // render. The reason never holds the URL value or the key.
@@ -78,6 +100,14 @@ function logOnce(reason: string): void {
   if (loggedReasons.has(reason)) return;
   loggedReasons.add(reason);
   console.error(`[llm] openai-compatible provider is not usable: ${reason}`);
+}
+
+// An optional setting that is ignored leaves the provider usable, so it is
+// worded as a warning; same once-per-reason rule.
+function warnOnce(reason: string): void {
+  if (loggedReasons.has(reason)) return;
+  loggedReasons.add(reason);
+  console.warn(`[llm] openai-compatible provider: ${reason}`);
 }
 
 // Test hook: forget what was logged.
@@ -116,6 +146,9 @@ export class OpenAiCompatibleProvider implements LlmProvider {
     if (!this.model) {
       throw new LlmError(503, 'OPENAI_COMPATIBLE_MODEL is not configured.', 'not_configured');
     }
+    const thinking = resolveOpenAiCompatibleThinking();
+    if (!thinking.ok) warnOnce(thinking.reason);
+    const enabled = thinking.ok ? thinking.enabled : undefined;
     return {
       label: 'the model server',
       url: `${this.baseUrl.url}/chat/completions`,
@@ -127,6 +160,9 @@ export class OpenAiCompatibleProvider implements LlmProvider {
       secrets: [this.apiKey],
       refuseRedirects: true,
       redirectHint: 'Set OPENAI_COMPATIBLE_BASE_URL to the final address of the server.',
+      ...(enabled === undefined
+        ? {}
+        : { extraBody: { chat_template_kwargs: { enable_thinking: enabled } } }),
     };
   }
 

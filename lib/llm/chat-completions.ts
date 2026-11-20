@@ -38,6 +38,10 @@ export interface ChatCompletionsEndpoint {
   refuseRedirects?: boolean;
   // Hint appended to the redirect error (which variable to fix).
   redirectHint?: string;
+  // Provider-specific request fields (for example a chat template switch).
+  // Spread before the standard fields, so it can never replace the model,
+  // the messages or the budget.
+  extraBody?: Record<string, unknown>;
 }
 
 // Optional floor on the output budget of every call. Reasoning models spend
@@ -105,6 +109,7 @@ async function post(
   stream: boolean,
 ): Promise<Response> {
   const body = {
+    ...endpoint.extraBody,
     model: endpoint.model,
     messages: [
       { role: 'system', content: req.system },

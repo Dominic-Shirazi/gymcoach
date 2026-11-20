@@ -52,6 +52,7 @@ describe('docker-compose.prod.yml', () => {
       'OPENAI_COMPATIBLE_BASE_URL',
       'OPENAI_COMPATIBLE_MAX_TOKENS',
       'OPENAI_COMPATIBLE_MODEL',
+      'OPENAI_COMPATIBLE_THINKING',
     ]);
     expect(vars.filter((name) => !passed.has(name))).toEqual([]);
   });
