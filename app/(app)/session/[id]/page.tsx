@@ -3,7 +3,7 @@ import { db } from '@/lib/db';
 import { requireSession } from '@/lib/auth';
 import { getLastPerformances, type LastPerformance } from '@/lib/last-performance';
 import { lastDoneAtByExercise } from '@/lib/last-done';
-import { READINESS_RECENCY_HOURS, type ReadinessSignal } from '@/lib/progression';
+import { readinessSignalFromCheckin } from '@/lib/live-session-targets';
 import { isDeloadActive } from '@/lib/deload';
 import { getReturnToTrainingRecommendations } from '@/lib/return-to-training-history';
 import { EffortScaleProvider } from '@/components/shared/effort-scale-provider';
@@ -85,46 +85,48 @@ export default async function SessionRunPage(props: Props) {
       bodyweight: true,
     },
   });
-  const [lastPerformances, user, latestCheckin, returnRecommendations, catalog] = await Promise.all([
-    getLastPerformances(auth.userId, exerciseIds, session.id, blocks),
-    userPromise,
-    db.readinessCheckin.findFirst({
-      where: { userId: auth.userId },
-      orderBy: { createdAt: 'desc' },
-    }),
-    userPromise.then((resolvedUser) =>
-      getReturnToTrainingRecommendations({
-        userId: auth.userId,
-        programExercises: workout.exercises,
-        excludeSessionId: session.id,
-        now: session.startedAt,
-        bodyweight: resolvedUser?.bodyweight ?? null,
-        gym: session.gym,
+  const [lastPerformances, user, latestCheckin, returnRecommendations, catalog] = await Promise.all(
+    [
+      getLastPerformances(auth.userId, exerciseIds, session.id, blocks),
+      userPromise,
+      db.readinessCheckin.findFirst({
+        where: { userId: auth.userId },
+        orderBy: { createdAt: 'desc' },
       }),
-    ),
-    // Catalog for the in-session exercise menu: only the fields it reads
-    // (SessionCatalogExercise), not the whole row.
-    db.exercise.findMany({
-      where: { userId: auth.userId },
-      orderBy: [{ muscleGroup: 'asc' }, { name: 'asc' }],
-      select: {
-        id: true,
-        name: true,
-        muscleGroup: true,
-        category: true,
-        usesBodyweight: true,
-        defaultRestSec: true,
-        isFavorite: true,
-      },
-    }),
-  ]);
+      userPromise.then((resolvedUser) =>
+        getReturnToTrainingRecommendations({
+          userId: auth.userId,
+          programExercises: workout.exercises,
+          excludeSessionId: session.id,
+          now: session.startedAt,
+          bodyweight: resolvedUser?.bodyweight ?? null,
+          gym: session.gym,
+        }),
+      ),
+      // Catalog for the in-session exercise menu: only the fields it reads
+      // (SessionCatalogExercise), not the whole row.
+      db.exercise.findMany({
+        where: { userId: auth.userId },
+        orderBy: [{ muscleGroup: 'asc' }, { name: 'asc' }],
+        select: {
+          id: true,
+          name: true,
+          muscleGroup: true,
+          category: true,
+          usesBodyweight: true,
+          defaultRestSec: true,
+          isFavorite: true,
+        },
+      }),
+    ],
+  );
 
   const lastPerfRecord: Record<string, SerializedLastPerformance> = {};
   for (const [k, v] of lastPerformances) {
     lastPerfRecord[k] = serializePerf(v);
   }
 
-  const readiness = buildReadinessSignal(latestCheckin);
+  const readiness = readinessSignalFromCheckin(latestCheckin);
   // Planned deload week (issue #112): resolved against the clock here so the
   // client never reasons about dates; an expired deloadUntil has no effect.
   const deloadActive = isDeloadActive(user?.deloadUntil ?? null, new Date());
@@ -154,39 +156,6 @@ export default async function SessionRunPage(props: Props) {
       </DistanceUnitProvider>
     </EffortScaleProvider>
   );
-}
-
-// Turn the latest check-in into the readiness signal that drives the load
-// suggestion. We only forward an in-window check-in; a stale one is dropped here
-// so the client never has to reason about clocks (and the suggestion stays
-// identical to the no-data path). Returns null when there is no usable signal.
-function buildReadinessSignal(
-  checkin: {
-    readiness: number;
-    soreness: unknown;
-    createdAt: Date;
-  } | null,
-): ReadinessSignal | null {
-  if (!checkin) return null;
-  const ageHours = (Date.now() - checkin.createdAt.getTime()) / (1000 * 60 * 60);
-  if (ageHours > READINESS_RECENCY_HOURS) return null;
-
-  // soreness is stored as JSON; coerce defensively to a plain { group: 1-5 } map.
-  let soreness: ReadinessSignal['soreness'] = null;
-  if (
-    checkin.soreness &&
-    typeof checkin.soreness === 'object' &&
-    !Array.isArray(checkin.soreness)
-  ) {
-    const entries = Object.entries(checkin.soreness as Record<string, unknown>).filter(
-      ([, v]) => typeof v === 'number',
-    ) as Array<[string, number]>;
-    if (entries.length > 0) {
-      soreness = Object.fromEntries(entries) as ReadinessSignal['soreness'];
-    }
-  }
-
-  return { readiness: checkin.readiness, soreness, ageHours };
 }
 
 function serializePerf(p: LastPerformance): SerializedLastPerformance {

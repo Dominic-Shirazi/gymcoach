@@ -25,14 +25,9 @@ import { Progress } from '@/components/ui/progress';
 import { acquireWakeLock, bindWakeLockToVisibility, releaseWakeLock } from '@/lib/wake-lock';
 import { vibrate, VIBRATION_PATTERNS } from '@/lib/vibrate';
 import { generateLocalId, getDB, type PendingSet } from '@/lib/indexeddb';
-import {
-  READINESS_HOLD_AT_OR_BELOW,
-  READINESS_RECENCY_HOURS,
-  SORENESS_HOLD_AT_OR_ABOVE,
-  readinessForSuggestion,
-  type ReadinessSignal,
-} from '@/lib/progression';
-import { recommendNextIntraSet, type IntraSetRecommendation } from '@/lib/intra-set-autoregulation';
+import { readinessForSuggestion, type ReadinessSignal } from '@/lib/progression';
+import { type IntraSetRecommendation } from '@/lib/intra-set-autoregulation';
+import { gymLoadConstraintsFor, intraSetRecommendationFor } from '@/lib/live-session-targets';
 import {
   buildSupersetView,
   isSupersetTransitionRest,
@@ -232,9 +227,7 @@ export function SessionRunner({
   } | null>(null);
   // Per-exercise rest states (issue #542, PR1): each exercise tracks its own
   // rest timer independently. All timers run simultaneously in the background.
-  const [exerciseStates, setExerciseStates] = useState<Map<string, ExerciseState>>(
-    new Map()
-  );
+  const [exerciseStates, setExerciseStates] = useState<Map<string, ExerciseState>>(new Map());
   // The same map, readable outside render: the background timer reads it on
   // every tick.
   const statesRef = useRef<Map<string, ExerciseState>>(new Map());
@@ -328,7 +321,7 @@ export function SessionRunner({
   // Guards details and menu to prevent unmounting the runner and losing all timers.
   const anyResting = useMemo(
     () => [...exerciseStates.values()].some((s) => s.kind === 'rest'),
-    [exerciseStates]
+    [exerciseStates],
   );
 
   // Write the clamp back. If a pending selection never lands (failed refresh,
@@ -453,7 +446,8 @@ export function SessionRunner({
             peId: pe.id,
             supersetGroup: pe.supersetGroup,
             isViewing,
-            shouldNavigate: isViewing && !state.navigatedImmediately && state.nextExerciseIdx != null,
+            shouldNavigate:
+              isViewing && !state.navigatedImmediately && state.nextExerciseIdx != null,
             nextIdx: state.nextExerciseIdx,
           });
 
@@ -470,7 +464,7 @@ export function SessionRunner({
         // Fire cues for EVERY expired rest (no conditional)
         vibrate(VIBRATION_PATTERNS.restEnd);
         if (isRestEndFlashEnabled()) {
-          setRestFlashCount(count => count + 1);
+          setRestFlashCount((count) => count + 1);
         }
 
         // Auto-advance ONLY when viewing
@@ -532,60 +526,24 @@ export function SessionRunner({
     pe: ProgramExerciseWithExercise,
     atMs: number,
   ): IntraSetRecommendation | null {
-    const completedSets = setsByExercise.get(keyOf(pe)) ?? [];
-    const lastWorkingSet = completedSets.filter((set) => !set.isWarmup && !set.isDropSet).at(-1);
-    if (!lastWorkingSet) return null;
-
-    const interveningSet = liveSets
-      .filter(
-        (set) =>
-          !set.isWarmup &&
-          !set.isDropSet &&
-          setBlockKey(set, exerciseOccurrences) !== keyOf(pe) &&
-          set.createdAt > lastWorkingSet.createdAt,
-      )
-      .sort((a, b) => b.createdAt - a.createdAt)[0];
-    const interveningPe = interveningSet
-      ? programExerciseByBlockKey.get(setBlockKey(interveningSet, exerciseOccurrences))
-      : undefined;
-    const sameMuscleSuperset = Boolean(
-      interveningPe &&
-      pe.supersetGroup != null &&
-      interveningPe.supersetGroup === pe.supersetGroup &&
-      interveningPe.exercise.muscleGroup === pe.exercise.muscleGroup,
-    );
-
-    const freshReadiness =
-      effectiveReadiness != null && effectiveReadiness.ageHours <= READINESS_RECENCY_HOURS;
-    const groupSoreness = effectiveReadiness?.soreness?.[pe.exercise.muscleGroup];
-    const recoveryBlocksIncrease =
-      freshReadiness &&
-      (effectiveReadiness.readiness <= READINESS_HOLD_AT_OR_BELOW ||
-        (typeof groupSoreness === 'number' && groupSoreness >= SORENESS_HOLD_AT_OR_ABOVE));
-    const allowLoadIncrease = !deloadActive && !recoveryBlocksIncrease;
-
-    return recommendNextIntraSet({
-      programExercise: pe,
-      completedSets,
-      recoverySec: Math.max(0, (atMs - lastWorkingSet.createdAt) / 1000),
-      sameMuscleSuperset,
-      allowLoadIncrease,
+    const keyOfSet = (set: PendingSet) => setBlockKey(set, exerciseOccurrences);
+    return intraSetRecommendationFor({
+      pe,
+      rowKey: keyOf(pe),
+      keyOfSet,
+      completedSets: setsByExercise.get(keyOf(pe)) ?? [],
+      sessionSets: liveSets,
+      programExerciseForKey: (key) => programExerciseByBlockKey.get(key),
+      atMs,
+      readiness: effectiveReadiness,
+      deloadActive,
       maxWeight: returnRecommendations[pe.id]?.weightCeiling ?? null,
       loadConstraints: loadConstraintsFor(pe),
     });
   }
 
   function loadConstraintsFor(pe: ProgramExerciseWithExercise): GymLoadConstraints | null {
-    if (!session.gym) return null;
-    const config = session.gym.exerciseConfigs.find((item) => item.exerciseId === pe.exerciseId);
-    return {
-      equipmentType: pe.exercise.equipmentType,
-      isAvailable: config?.isAvailable ?? true,
-      dumbbellWeights: session.gym.dumbbellWeights,
-      plateWeights: session.gym.plateWeights,
-      barWeights: session.gym.barWeights,
-      weightOptions: liveWeightOptions?.[pe.exerciseId] ?? config?.weightOptions ?? [],
-    };
+    return gymLoadConstraintsFor(session.gym, pe, liveWeightOptions);
   }
 
   // Only the exercises whose configs the server updated take the new weights,
@@ -726,11 +684,13 @@ export function SessionRunner({
     // Check if any exercise in the same superset group is already resting (issue #542, edge case).
     // If so, don't start a new competing rest timer (maintainer review: check BEFORE navigation).
     const currentSupersetGroup = currentPE.supersetGroup;
-    const supersetPartnerAlreadyResting = currentSupersetGroup != null &&
-      programExercises.some(pe =>
-        pe.id !== currentPE.id &&
-        pe.supersetGroup === currentSupersetGroup &&
-        statesRef.current.get(pe.id)?.kind === 'rest'
+    const supersetPartnerAlreadyResting =
+      currentSupersetGroup != null &&
+      programExercises.some(
+        (pe) =>
+          pe.id !== currentPE.id &&
+          pe.supersetGroup === currentSupersetGroup &&
+          statesRef.current.get(pe.id)?.kind === 'rest',
       );
 
     if (supersetPartnerAlreadyResting) {
@@ -747,7 +707,7 @@ export function SessionRunner({
     if (navigatedImmediately) selectExercise(nextIdx);
 
     // Set rest state for this specific exercise (issue #542, PR1).
-    updateExerciseStates(prev => {
+    updateExerciseStates((prev) => {
       const next = new Map(prev);
       next.set(restingExerciseId, {
         kind: 'rest',
@@ -940,7 +900,7 @@ export function SessionRunner({
     }
 
     // Clear the resting exercise's state
-    updateExerciseStates(prev => {
+    updateExerciseStates((prev) => {
       const next = new Map(prev);
       next.set(restingId, { kind: 'input' });
       return next;
@@ -950,7 +910,7 @@ export function SessionRunner({
   function handlePauseRest() {
     const restingId = getRestingExerciseId();
     if (!restingId || currentState.kind !== 'rest') return;
-    updateExerciseStates(prev => {
+    updateExerciseStates((prev) => {
       const next = new Map(prev);
       next.set(restingId, pauseRest(currentState, Date.now()));
       return next;
@@ -960,7 +920,7 @@ export function SessionRunner({
   function handleResumeRest() {
     const restingId = getRestingExerciseId();
     if (!restingId || currentState.kind !== 'rest') return;
-    updateExerciseStates(prev => {
+    updateExerciseStates((prev) => {
       const next = new Map(prev);
       next.set(restingId, resumeRest(currentState, Date.now()));
       return next;
@@ -970,7 +930,7 @@ export function SessionRunner({
   function handleAdjustRest(deltaMs: number) {
     const restingId = getRestingExerciseId();
     if (!restingId || currentState.kind !== 'rest') return;
-    updateExerciseStates(prev => {
+    updateExerciseStates((prev) => {
       const next = new Map(prev);
       next.set(restingId, adjustRest(currentState, deltaMs, Date.now()));
       return next;
@@ -1124,7 +1084,9 @@ export function SessionRunner({
         // recommendation assumes runs until now plus what is left.
         recommendationFor(
           restNextPe,
-          currentState.pausedRemainingMs != null ? Date.now() + currentState.pausedRemainingMs : currentState.endsAt,
+          currentState.pausedRemainingMs != null
+            ? Date.now() + currentState.pausedRemainingMs
+            : currentState.endsAt,
         )
       : null;
 
@@ -1295,7 +1257,7 @@ export function SessionRunner({
               // (maintainer review): flip state immediately to prevent re-beep on remount
               const restingId = getRestingExerciseId();
               if (restingId && currentState.kind === 'rest') {
-                updateExerciseStates(prev => {
+                updateExerciseStates((prev) => {
                   const next = new Map(prev);
                   next.set(restingId, { kind: 'input' });
                   return next;
@@ -1304,7 +1266,7 @@ export function SessionRunner({
                 // Fire cues (same as interval expiry)
                 vibrate(VIBRATION_PATTERNS.restEnd);
                 if (isRestEndFlashEnabled()) {
-                  setRestFlashCount(count => count + 1);
+                  setRestFlashCount((count) => count + 1);
                 }
 
                 // Auto-advance if needed

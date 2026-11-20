@@ -18,7 +18,8 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { suggestNextWeight, weightIncrement, type ReadinessSignal } from '@/lib/progression';
+import { weightIncrement, type ReadinessSignal } from '@/lib/progression';
+import { initialStrengthTarget } from '@/lib/live-session-targets';
 import {
   distanceToM,
   formatDuration,
@@ -35,7 +36,13 @@ import {
 import { useDistanceUnit } from '@/components/shared/distance-unit-provider';
 import { parseSetShorthand, rpeToRir } from '@/lib/set-shorthand';
 import type { SetParseResult } from '@/lib/schemas/set-parse';
-import { effortOptions, effortTone, effortValue, formatEffort, type EffortTone } from '@/lib/effort';
+import {
+  effortOptions,
+  effortTone,
+  effortValue,
+  formatEffort,
+  type EffortTone,
+} from '@/lib/effort';
 import { useEffortScale } from '@/components/shared/effort-scale-provider';
 import { PlateCalculator } from '@/components/session/plate-calculator';
 import { WarmupCalculator } from '@/components/session/warmup-calculator';
@@ -43,11 +50,7 @@ import type { PendingSet } from '@/lib/indexeddb';
 import type { SerializedLastPerformance } from './session-runner';
 import type { IntraSetRecommendation } from '@/lib/intra-set-autoregulation';
 import type { ReturnRecommendation } from '@/lib/return-to-training';
-import {
-  constrainGymWeight,
-  constrainGymWeightAtOrBelow,
-  type GymLoadConstraints,
-} from '@/lib/gym-loads';
+import { constrainGymWeight, type GymLoadConstraints } from '@/lib/gym-loads';
 
 interface Props {
   programExercise: ProgramExercise & { exercise: Exercise };
@@ -369,7 +372,8 @@ export function SetInput({
               {unit === 'LB'
                 ? roundWeight(toDisplayWeight(recommendation.weight, unit), 1)
                 : recommendation.weight}{' '}
-              {unitLabel(unit)} × {recommendation.reps} · {formatEffort(effortScale, recommendation.rir)}
+              {unitLabel(unit)} × {recommendation.reps} ·{' '}
+              {formatEffort(effortScale, recommendation.rir)}
             </p>
             <p className="text-xs text-muted-foreground">
               {autoT(`reasons.${recommendation.reason}`, { scale: effortScale })}
@@ -732,86 +736,20 @@ function computeInitial(
     };
   }
 
-  // 1. If a set already exists for this exercise in the current session,
-  //    reuse its values (idea: you aim for the same load, adjust the reps).
-  const lastInSession = existingSets.filter((s) => !s.isWarmup).at(-1);
-  if (lastInSession) {
-    return {
-      weight: recommendation?.weight ?? lastInSession.weight,
-      reps: recommendation?.reps ?? lastInSession.reps,
-      rir: recommendation?.rir ?? lastInSession.rir,
-      durationInput: '',
-      distanceInput: '',
-      isWarmup: false,
-      isDropSet: false,
-      notes: '',
-    };
-  }
-  // 2. A return after a long break is a session-only calibration. Keep the
-  //    normal progression path intact for ordinary sessions, but start this one
-  //    at the conservative history/inventory value and let later sets hand off
-  //    to RIR-aware intra-set autoregulation.
-  if (returnRecommendation && returnRecommendation.mode !== 'normal') {
-    let weight = returnRecommendation.suggestedWeight;
-    if (weight == null && lastPerf) {
-      const ordinary = suggestNextWeight(
-        pe,
-        lastPerf.sets,
-        readiness,
-        deloadActive,
-        loadConstraints,
-      );
-      weight = ordinary.weight ?? lastPerf.maxWeight;
-      if (
-        returnRecommendation.weightCeiling != null &&
-        weight > returnRecommendation.weightCeiling
-      ) {
-        weight = constrainGymWeightAtOrBelow(returnRecommendation.weightCeiling, loadConstraints);
-      }
-    }
-
-    return {
-      weight: weight ?? 0,
-      reps: pe.targetRepsMin,
-      rir: pe.targetRIR,
-      durationInput: '',
-      distanceInput: '',
-      isWarmup: false,
-      isDropSet: false,
-      notes: '',
-    };
-  }
-
-  // 2. Otherwise, pre-fill with the suggestion (double progression algo). If
-  //    progressing, aim for the bottom of the rep range with the heavier
-  //    load; otherwise try to beat the previous reps (at least match them).
-  if (lastPerf) {
-    const suggestion = suggestNextWeight(
-      pe,
-      lastPerf.sets,
-      readiness,
-      deloadActive,
-      loadConstraints,
-    );
-    const initialReps =
-      suggestion.reason === 'progression' ? pe.targetRepsMin : lastPerf.repsAtMaxWeight;
-    return {
-      weight: suggestion.weight ?? lastPerf.maxWeight,
-      reps: initialReps,
-      rir: pe.targetRIR,
-      durationInput: '',
-      distanceInput: '',
-      isWarmup: false,
-      isDropSet: false,
-      notes: '',
-    };
-  }
-  // 3. Defaults: middle of the rep range, target RIR, load 0.
-  const midReps = Math.round((pe.targetRepsMin + pe.targetRepsMax) / 2);
+  // Strength: the same targets the MCP live-session state announces
+  // (lib/live-session-targets.ts).
+  const target = initialStrengthTarget({
+    pe,
+    existingSets,
+    lastPerf,
+    readiness,
+    deloadActive,
+    recommendation,
+    returnRecommendation,
+    loadConstraints,
+  });
   return {
-    weight: 0,
-    reps: midReps,
-    rir: pe.targetRIR,
+    ...target,
     durationInput: '',
     distanceInput: '',
     isWarmup: false,
