@@ -17,11 +17,18 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${PORT}`,
     trace: 'on-first-retry',
+    // Pin the browser zone: the app buckets days in the zone the browser
+    // reports, so without this the fixtures near UTC midnight land on a
+    // different calendar day depending on the machine running the suite.
+    // Specs that exercise another zone override it with test.use().
+    timezoneId: 'UTC',
   },
   webServer: {
     // LLM_PROVIDER=demo serves canned coach responses, so the AI flows (chat,
     // in-session chat) are E2E-testable without any API key (issue #111).
-    command: `DATABASE_URL='${TEST_DB}' JWT_SECRET='e2e-test-secret-at-least-32-characters' LLM_PROVIDER='demo' next start -p ${PORT}`,
+    // TZ=UTC matches the Docker image, so the server's fallback zone does not
+    // follow the host either.
+    command: `TZ=UTC DATABASE_URL='${TEST_DB}' JWT_SECRET='e2e-test-secret-at-least-32-characters' LLM_PROVIDER='demo' next start -p ${PORT}`,
     url: `http://localhost:${PORT}/login`,
     timeout: 120_000,
     reuseExistingServer: !process.env.CI,

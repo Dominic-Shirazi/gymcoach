@@ -63,3 +63,41 @@ test('a lifter can import multiple FIT activities at once', async ({ page }) => 
   await expect(page.getByRole('heading', { name: 'Running' })).toBeVisible();
   await expect(page.getByTestId('activity-track-chart')).toBeVisible();
 });
+
+// The config pins the browser to UTC; this spec checks the other side of that
+// pin. The ride starts 2025-12-01T07:30Z, which is 23:30 on November 30 in Los
+// Angeles, so a Pacific browser must file it on November 30 (issue #476: the
+// day boundary is the lifter's zone, never the server's).
+test.describe('in a Pacific browser', () => {
+  test.use({ timezoneId: 'America/Los_Angeles' });
+
+  test('a FIT activity lands on the local calendar day', async ({ page }) => {
+    const registerRes = await page.request.post('/api/auth/register', {
+      headers: { 'x-forwarded-for': '10.111.0.20' },
+      data: {
+        displayName: 'FIT TZ E2E',
+        email: `e2e-fit-tz-${Date.now()}@test.dev`,
+        password: 'supersecret',
+      },
+    });
+    expect(registerRes.ok()).toBeTruthy();
+
+    await page.goto('/settings');
+    await page.getByLabel('Source app').click();
+    await page.getByRole('option', { name: 'FIT file' }).click();
+    await page.locator('input[type="file"][accept^=".fit"]').setInputFiles([
+      { name: 'ride.fit', mimeType: 'application/octet-stream', buffer: Buffer.from(BIKE_FIT_B64, 'base64') },
+    ]);
+    await expect(page.getByTestId('import-preview')).toBeVisible();
+    await page.getByRole('button', { name: /import 1 session/i }).click();
+    await expect(page.getByTestId('import-preview')).not.toBeVisible();
+
+    await page.goto('/history?month=2025-11&day=2025-11-30');
+    await expect(page.getByRole('heading', { name: /November 30, 2025/i })).toBeVisible();
+    await expect(page.getByText('Cycling')).toBeVisible();
+
+    await page.goto('/history?month=2025-12&day=2025-12-01');
+    await expect(page.getByRole('heading', { name: /December 1, 2025/i })).toBeVisible();
+    await expect(page.getByText('Cycling')).not.toBeVisible();
+  });
+});
