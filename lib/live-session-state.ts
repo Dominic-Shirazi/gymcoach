@@ -7,7 +7,7 @@ import { isDeloadActive } from '@/lib/deload';
 import { getReturnToTrainingRecommendations } from '@/lib/return-to-training-history';
 import { liveSessionGymInclude } from '@/lib/session-gym-selection';
 import { blockIndexByRow, occurrenceCounts, rowBlockKey, setBlockKey } from '@/lib/exercise-blocks';
-import { toRunnerExercises } from '@/lib/freestyle';
+import { sessionPlanRows } from '@/lib/session-plan';
 import { readinessForSuggestion } from '@/lib/progression';
 import {
   gymLoadConstraintsFor,
@@ -92,7 +92,7 @@ export async function getOwnedSessionState(userId: string, sessionId?: string) {
   // (18.14 for a 40 lb dumbbell) reads back as 40, not 39.99.
   const display = (kg: number) => roundWeight(toDisplayWeight(kg, unit));
 
-  const rows = session.workout?.exercises ?? toRunnerExercises(session.exercises);
+  const rows = sessionPlanRows(session);
   const rowBlocks = blockIndexByRow(rows);
   const counts = occurrenceCounts(rows);
   const blocks = rows.flatMap((pe) => {

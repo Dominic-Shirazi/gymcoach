@@ -248,27 +248,31 @@ export const session = {
   exerciseMenu: {
     actions: 'Oefeningacties',
     actionsDescription:
-      'Deze acties wijzigen je opgeslagen programma, dus ze gelden ook voor volgende sessies van deze training.',
+      'Bij elke wijziging kies je: alleen vandaag of vanaf nu. "Vanaf nu" wijzigt ook je opgeslagen programma.',
     replace: 'Oefening vervangen',
     replaceDescription:
-      'Kies een andere oefening. Die vervangt deze in je opgeslagen programma, voor nu en voor volgende sessies.',
+      'Kies een andere oefening. Daarna kies je: alleen vandaag, of vanaf nu ook in je opgeslagen programma.',
     addExercises: 'Oefening toevoegen',
     addDescription:
-      'Voeg een oefening toe aan het eind van deze training. Die wordt ook in je programma opgeslagen voor volgende sessies.',
+      'Voeg een oefening toe aan het eind van deze training. Daarna kies je: alleen vandaag, of vanaf nu ook in je opgeslagen programma.',
     remove: 'Oefening verwijderen',
     removeDescription:
-      'Verwijder deze oefening uit je opgeslagen programma, voor nu en voor volgende sessies.',
+      'Verwijder deze oefening alleen vandaag, of vanaf nu uit je opgeslagen programma.',
     searchExercises: 'Oefeningen zoeken',
     noExercises: 'Geen oefeningen gevonden.',
     favoriteChoice: 'favoriet: {name}',
     replaceConfirm:
-      'Hiermee vervang je de oefening in je opgeslagen programma, dus volgende sessies veranderen ook. Vervangen?',
+      'Alleen vandaag vervangen of vanaf nu? "Vanaf nu" wijzigt ook je opgeslagen programma.',
     replaceLoggedWarning:
-      'Sets die je in deze sessie al hebt gelogd blijven in je geschiedenis onder de oorspronkelijke oefening, maar je ziet ze niet meer op dit scherm. Je opgeslagen programma verandert ook voor volgende sessies. Vervangen?',
+      'Sets die je in deze sessie al hebt gelogd blijven in je geschiedenis onder de oorspronkelijke oefening, maar je ziet ze niet meer op dit scherm. Alleen vandaag vervangen of vanaf nu?',
     removeLoggedWarning:
-      'Sets die je al hebt gelogd blijven in je geschiedenis, maar je ziet ze niet meer op dit scherm. De oefening wordt uit je opgeslagen programma verwijderd, ook voor volgende sessies.',
+      'Sets die je al hebt gelogd blijven in je geschiedenis, maar je ziet ze niet meer op dit scherm. Alleen vandaag verwijderen of vanaf nu?',
     removeConfirm:
-      'Deze oefening uit je opgeslagen programma verwijderen? Volgende sessies veranderen ook.',
+      'Alleen vandaag verwijderen of vanaf nu? "Vanaf nu" wijzigt ook je opgeslagen programma.',
+    addConfirm:
+      '{name} alleen vandaag toevoegen of vanaf nu? "Vanaf nu" voegt de oefening ook toe aan je opgeslagen programma.',
+    justToday: 'Alleen vandaag',
+    fromNowOn: 'Vanaf nu',
     removeLastBlocked:
       'Dit is de enige oefening in de training, dus je kunt hem hier niet verwijderen. Vervang hem in plaats daarvan.',
     confirmReplace: 'Vervangen door {name}',

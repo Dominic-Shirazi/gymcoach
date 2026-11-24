@@ -962,8 +962,13 @@ export async function buildCurrentSessionContext(
   // 5x10 back-off sets as more of the top set and could not tell the two
   // targets apart.
   // Without a workout the plan is the session's own list (issue #388): a
-  // freestyle exercise keeps its targets and shows before its first set.
-  const plannedExercises = session.workout?.exercises ?? session.exercises;
+  // freestyle exercise keeps its targets and shows before its first set. A
+  // workout changed for today runs its own copy, skipped rows left out
+  // (lib/session-plan.ts).
+  const plannedExercises =
+    session.workout && session.exercises.length === 0
+      ? session.workout.exercises
+      : session.exercises.filter((row) => row.skippedAt == null);
   const rowBlocks = blockIndexByRow(plannedExercises);
   const exerciseOccurrences = occurrenceCounts(plannedExercises);
 

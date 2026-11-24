@@ -251,27 +251,31 @@ export const session = {
   exerciseMenu: {
     actions: 'Actions de l’exercice',
     actionsDescription:
-      'Ces actions modifient votre programme enregistré : elles s’appliquent aussi aux prochaines séances.',
+      'Chaque modification vous demande si elle vaut pour aujourd’hui seulement ou désormais. « Désormais » modifie aussi votre programme enregistré.',
     replace: 'Remplacer l’exercice',
     replaceDescription:
-      'Choisissez un autre exercice. Il remplace celui-ci dans votre programme enregistré, pour cette séance et les suivantes.',
+      'Choisissez un autre exercice. Vous choisirez ensuite : aujourd’hui seulement, ou désormais, dans votre programme enregistré aussi.',
     addExercises: 'Ajouter un exercice',
     addDescription:
-      'Ajoutez un exercice à la fin de cette séance. Il est enregistré dans votre programme, pour les prochaines séances aussi.',
+      'Ajoutez un exercice à la fin de cette séance. Vous choisirez ensuite : aujourd’hui seulement, ou désormais, dans votre programme enregistré aussi.',
     remove: 'Supprimer l’exercice',
     removeDescription:
-      'Supprimez cet exercice de votre programme enregistré, pour cette séance et les suivantes.',
+      'Supprimez cet exercice aujourd’hui seulement, ou de votre programme enregistré désormais.',
     searchExercises: 'Rechercher des exercices',
     noExercises: 'Aucun exercice correspondant.',
     favoriteChoice: 'favori : {name}',
     replaceConfirm:
-      'L’exercice sera remplacé dans votre programme enregistré : les prochaines séances changent aussi. Le remplacer ?',
+      'Le remplacer aujourd’hui seulement, ou désormais ? « Désormais » modifie aussi votre programme enregistré.',
     replaceLoggedWarning:
-      'Les séries déjà enregistrées pendant la séance en cours restent dans votre historique, liées à l’exercice d’origine, mais ne sont plus affichées sur cet écran. Votre programme enregistré change aussi pour les prochaines séances. Le remplacer ?',
+      'Les séries déjà enregistrées pendant la séance en cours restent dans votre historique, liées à l’exercice d’origine, mais ne sont plus affichées sur cet écran. Le remplacer aujourd’hui seulement, ou désormais ?',
     removeLoggedWarning:
-      'Les séries déjà enregistrées restent dans l’historique, mais ne sont plus affichées sur cet écran. L’exercice est supprimé de votre programme enregistré, pour les prochaines séances aussi.',
+      'Les séries déjà enregistrées restent dans l’historique, mais ne sont plus affichées sur cet écran. Le supprimer aujourd’hui seulement, ou désormais ?',
     removeConfirm:
-      'Supprimer cet exercice de votre programme enregistré ? Les prochaines séances changent aussi.',
+      'Le supprimer aujourd’hui seulement, ou désormais ? « Désormais » modifie aussi votre programme enregistré.',
+    addConfirm:
+      'Ajouter {name} aujourd’hui seulement, ou désormais ? « Désormais » l’ajoute aussi à votre programme enregistré.',
+    justToday: 'Aujourd’hui seulement',
+    fromNowOn: 'Désormais',
     removeLastBlocked:
       'C’est le seul exercice de la séance : il ne peut pas être supprimé ici. Remplacez-le plutôt.',
     confirmReplace: 'Remplacer par {name}',

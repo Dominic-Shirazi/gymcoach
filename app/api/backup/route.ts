@@ -62,6 +62,10 @@ import {
 // - Session / Set: all user content incl durationSec, distanceM, avgHr, block.
 // - Session.freestyle and SessionExercise (v10, issue #388): the marker and
 //   the exercise list of a freestyle session, re-linked to the exercise by name.
+//   Since v15 also a workout session's copy of its workout (lib/session-plan.ts)
+//   with the program fields of each row and its skippedAt. The link to the
+//   program row it was copied from is not exported: it only serves a change
+//   made "from now on" during an open session.
 // - Session.avgHr / maxHr / hrTrack (v11, issue #562): the heart rate of an
 //   attached watch recording.
 // - Set.watchAvgHr / watchMaxHr (v13, issue #576): the heart rate of a set
@@ -78,7 +82,7 @@ import {
 // - Program.createdAt / Program.updatedAt and Exercise.createdAt (server-side
 //   bookkeeping with no user-facing meaning; reset to the import time).
 
-const VERSION = 14;
+const VERSION = 15;
 
 // Hard cap on the import body size, enforced while reading the stream (the
 // Content-Length header is attacker-controlled). Generous: a decade of daily
@@ -312,6 +316,17 @@ export async function GET() {
                   targetRepsMax: row.targetRepsMax,
                   targetRIR: row.targetRIR,
                   restSec: row.restSec,
+                  // New in v15: the program fields of a copied workout row
+                  // and the skip marker; absent from older backups.
+                  tempo: row.tempo,
+                  notes: row.notes,
+                  supersetGroup: row.supersetGroup,
+                  autoregulationMode: row.autoregulationMode,
+                  fatigueRate: row.fatigueRate,
+                  loadAdjustmentPct: row.loadAdjustmentPct,
+                  targetDurationSec: row.targetDurationSec,
+                  targetDistanceM: row.targetDistanceM,
+                  skippedAt: row.skippedAt?.toISOString() ?? null,
                 },
               ]
             : [];
@@ -535,6 +550,22 @@ const importSchema = z.object({
               targetRepsMax: z.number().int().min(1).max(50),
               targetRIR: z.number().int().min(0).max(5),
               restSec: z.number().int().min(15).max(600),
+              // v15; absent in older backups. Bounds match a program row.
+              tempo: z.string().max(20).nullable().optional(),
+              notes: z.string().max(2000).nullable().optional(),
+              supersetGroup: z
+                .number()
+                .int()
+                .min(MIN_SUPERSET_GROUP)
+                .max(MAX_SUPERSET_GROUP)
+                .nullable()
+                .optional(),
+              autoregulationMode: z.enum(['PRESERVE_RIR', 'PRESERVE_REPS']).optional(),
+              fatigueRate: z.number().min(0.25).max(2).nullable().optional(),
+              loadAdjustmentPct: z.number().min(1).max(5).nullable().optional(),
+              targetDurationSec: z.number().int().min(1).max(MAX_DURATION_SEC).nullable().optional(),
+              targetDistanceM: z.number().positive().max(MAX_DISTANCE_M).nullable().optional(),
+              skippedAt: z.string().datetime().nullable().optional(),
             }),
           )
           .max(100)
@@ -1023,16 +1054,22 @@ export async function POST(req: Request) {
           });
           if (setRows.length > 0) await tx.set.createMany({ data: setRows });
 
-          // Freestyle list (v10). Only a session without a workout reads it,
-          // so it is dropped when the session was re-linked to one; a row
-          // whose exercise is unknown, or named twice, is skipped (the table
-          // holds an exercise once per session).
-          if (!workout && s.exercises && s.exercises.length > 0) {
+          // The session's own list: a freestyle list (v10) or, since v15, a
+          // workout's copy for that session. A row whose exercise is unknown
+          // is skipped. A freestyle list holds an exercise once, so a name
+          // listed twice is skipped there; a copied workout may repeat one
+          // on purpose (issue #429). A copy is dropped when the session
+          // could not be re-linked to its workout, since a session without
+          // a workout would then read it as a freestyle list.
+          const copiedWorkout = s.freestyle !== true && s.workoutName != null;
+          if ((workout ? copiedWorkout : !copiedWorkout) && s.exercises && s.exercises.length > 0) {
             const seen = new Set<string>();
             const listRows = s.exercises.flatMap((row) => {
               const exId = exerciseIdByName.get(row.exerciseName);
-              if (!exId || seen.has(exId)) return [];
+              if (!exId || (!workout && seen.has(exId))) return [];
               seen.add(exId);
+              const cardioTarget =
+                cardioExerciseNames.has(row.exerciseName) && row.targetDurationSec != null;
               return [
                 {
                   sessionId: session.id,
@@ -1043,6 +1080,17 @@ export async function POST(req: Request) {
                   targetRepsMax: Math.max(row.targetRepsMin, row.targetRepsMax),
                   targetRIR: row.targetRIR,
                   restSec: row.restSec,
+                  tempo: row.tempo ?? null,
+                  notes: row.notes ?? null,
+                  supersetGroup: row.supersetGroup ?? null,
+                  autoregulationMode: row.autoregulationMode ?? 'PRESERVE_RIR',
+                  fatigueRate: row.fatigueRate ?? null,
+                  loadAdjustmentPct: row.loadAdjustmentPct ?? null,
+                  // Same rule as a program row: a cardio target only on a
+                  // CARDIO exercise, and a distance only next to a duration.
+                  targetDurationSec: cardioTarget ? (row.targetDurationSec ?? null) : null,
+                  targetDistanceM: cardioTarget ? (row.targetDistanceM ?? null) : null,
+                  skippedAt: row.skippedAt ? new Date(row.skippedAt) : null,
                 },
               ];
             });

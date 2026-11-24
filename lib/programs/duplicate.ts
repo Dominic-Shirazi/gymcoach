@@ -128,6 +128,23 @@ export async function saveSessionAsWorkout(
             },
           },
         },
+        // Today's copy of the workout, when the session changed it
+        // (lib/session-plan.ts): its rows carry the settings that were run.
+        // A freestyle session's list is not read here, as before.
+        exercises: {
+          orderBy: { order: 'asc' },
+          select: {
+            exerciseId: true,
+            restSec: true,
+            tempo: true,
+            notes: true,
+            autoregulationMode: true,
+            fatigueRate: true,
+            loadAdjustmentPct: true,
+            targetDurationSec: true,
+            targetDistanceM: true,
+          },
+        },
       },
     });
     if (!session) throw new ApiError(404, 'Session not found.');
@@ -145,7 +162,9 @@ export async function saveSessionAsWorkout(
     const rows = workoutRowsFromSession(
       session.sets,
       defaultRest,
-      session.workout?.exercises ?? [],
+      session.workout && session.exercises.length > 0
+        ? session.exercises
+        : (session.workout?.exercises ?? []),
     );
     if (rows.length === 0) {
       throw new ApiError(400, 'This session has no working sets to save.');

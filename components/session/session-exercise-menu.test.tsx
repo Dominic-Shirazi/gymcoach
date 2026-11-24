@@ -73,6 +73,7 @@ function renderMenu(loggedSetCount = 0, onChanged = vi.fn()) {
       programExercises={[programExercise, nextProgramExercise]}
       catalog={[bench, incline, row]}
       loggedSetCount={loggedSetCount}
+      sessionId="session-1"
       onChanged={onChanged}
     />,
   );
@@ -120,6 +121,7 @@ describe('SessionExerciseMenu', () => {
         programExercises={[programExercise, declineProgramExercise, nextProgramExercise]}
         catalog={[bench, incline, decline, row]}
         loggedSetCount={0}
+        sessionId="session-1"
         onChanged={vi.fn()}
       />,
     );
@@ -128,26 +130,41 @@ describe('SessionExerciseMenu', () => {
     expect(screen.queryByRole('button', { name: 'Decline Press' })).not.toBeInTheDocument();
   });
 
-  it('replaces through the existing owned program-exercise route', async () => {
+  it('replaces just for today through the session row route', async () => {
     const onChanged = vi.fn();
     renderMenu(0, onChanged);
     fireEvent.click(screen.getByRole('button', { name: 'Replace exercise' }));
     fireEvent.click(screen.getByRole('button', { name: 'Incline Press' }));
-    fireEvent.click(screen.getByRole('button', { name: /replace with incline press/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Just today' }));
     await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
     const [url, init] = vi.mocked(fetch).mock.calls[0]!;
-    expect(url).toBe('/api/program-exercises/pe-bench');
+    expect(url).toBe('/api/sessions/session-1/exercises/pe-bench');
     expect(init?.method).toBe('PUT');
     expect(JSON.parse(init?.body as string)).toMatchObject({
       exerciseId: 'incline',
       targetSets: 4,
       targetRepsMin: 8,
       targetRepsMax: 10,
+      scope: 'today',
     });
     expect(onChanged).toHaveBeenCalledOnce();
     // The menu goes back to its action list, so reopening it does not land on
     // the replacement picker of the exercise that was just swapped in.
     expect(await screen.findByRole('button', { name: 'Add exercise' })).toBeInTheDocument();
+  });
+
+  it('replaces from now on in the saved program when asked', async () => {
+    renderMenu(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Replace exercise' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Incline Press' }));
+    fireEvent.click(screen.getByRole('button', { name: 'From now on' }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    const [url, init] = vi.mocked(fetch).mock.calls[0]!;
+    expect(url).toBe('/api/sessions/session-1/exercises/pe-bench');
+    expect(JSON.parse(init?.body as string)).toMatchObject({
+      exerciseId: 'incline',
+      scope: 'program',
+    });
   });
 
   it('requires confirmation when replacement would leave logged sets on the original exercise', async () => {
@@ -156,7 +173,7 @@ describe('SessionExerciseMenu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Incline Press' }));
     expect(fetch).not.toHaveBeenCalled();
     expect(screen.getByText(/already logged/i)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /replace with incline press/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Just today' }));
     await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
   });
 
@@ -166,7 +183,7 @@ describe('SessionExerciseMenu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Incline Press' }));
     expect(fetch).not.toHaveBeenCalled();
     expect(screen.queryByText(/already logged/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/future sessions change too/i)).toBeInTheDocument();
+    expect(screen.getByText(/replace it just today, or from now on/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(fetch).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Incline Press' })).toBeInTheDocument();
@@ -178,9 +195,13 @@ describe('SessionExerciseMenu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add exercise' }));
     expect(screen.queryByRole('button', { name: 'Cable Row' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Incline Press' }));
+    // A workout asks the scope before anything is sent.
+    expect(fetch).not.toHaveBeenCalled();
+    expect(screen.getByText(/add incline press just today, or from now on/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Just today' }));
     await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
     const [url, init] = vi.mocked(fetch).mock.calls[0]!;
-    expect(url).toBe('/api/workouts/workout-1/program-exercises');
+    expect(url).toBe('/api/sessions/session-1/exercises');
     expect(init?.method).toBe('POST');
     expect(JSON.parse(init?.body as string)).toEqual({
       exerciseId: 'incline',
@@ -189,6 +210,7 @@ describe('SessionExerciseMenu', () => {
       targetRepsMax: 12,
       targetRIR: 2,
       restSec: 120,
+      scope: 'today',
     });
     expect(onChanged).toHaveBeenCalledOnce();
   });
@@ -211,11 +233,13 @@ describe('SessionExerciseMenu', () => {
         programExercises={[programExercise, nextProgramExercise]}
         catalog={[bench, bike, row]}
         loggedSetCount={0}
+        sessionId="session-1"
         onChanged={vi.fn()}
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Add exercise' }));
     fireEvent.click(screen.getByRole('button', { name: 'Stationary Bike' }));
+    fireEvent.click(screen.getByRole('button', { name: 'From now on' }));
     await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
     expect(JSON.parse(vi.mocked(fetch).mock.calls[0]![1]?.body as string)).toEqual({
       exerciseId: 'bike',
@@ -224,6 +248,7 @@ describe('SessionExerciseMenu', () => {
       targetRepsMax: 1,
       targetRIR: 0,
       restSec: 60,
+      scope: 'program',
     });
   });
 
@@ -235,7 +260,8 @@ describe('SessionExerciseMenu', () => {
     );
     renderMenu();
     fireEvent.click(screen.getByRole('button', { name: 'Add exercise' }));
-    const choice = screen.getByRole('button', { name: 'Incline Press' });
+    fireEvent.click(screen.getByRole('button', { name: 'Incline Press' }));
+    const choice = screen.getByRole('button', { name: 'Just today' });
     fireEvent.click(choice);
     fireEvent.click(choice);
     expect(fetch).toHaveBeenCalledOnce();
@@ -243,6 +269,9 @@ describe('SessionExerciseMenu', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Add exercise' })).toBeEnabled());
   });
 
+  // The server resets the old exercise's fatigue tuning on a swap
+  // (lib/session-plan.ts, covered by tests/integration/session-plan.test.ts),
+  // so the menu sends targets only and never the old row's tuning.
   it('does not carry the old exercise autoregulation tuning onto the replacement', async () => {
     const tuned = {
       ...programExercise,
@@ -257,19 +286,18 @@ describe('SessionExerciseMenu', () => {
         programExercises={[tuned, nextProgramExercise]}
         catalog={[bench, incline, row]}
         loggedSetCount={0}
+        sessionId="session-1"
         onChanged={vi.fn()}
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Replace exercise' }));
     fireEvent.click(screen.getByRole('button', { name: 'Incline Press' }));
-    fireEvent.click(screen.getByRole('button', { name: /replace with incline press/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'From now on' }));
     await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
-    // Same values the POST route stores for a new upper-body compound row.
-    expect(JSON.parse(vi.mocked(fetch).mock.calls[0]![1]?.body as string)).toMatchObject({
-      exerciseId: 'incline',
-      fatigueRate: 0.75,
-      loadAdjustmentPct: 2.5,
-    });
+    const body = JSON.parse(vi.mocked(fetch).mock.calls[0]![1]?.body as string);
+    expect(body).toMatchObject({ exerciseId: 'incline', scope: 'program' });
+    expect(body).not.toHaveProperty('fatigueRate');
+    expect(body).not.toHaveProperty('loadAdjustmentPct');
   });
 
   it('keeps every menu control at the repo tap-target height', () => {
@@ -282,9 +310,8 @@ describe('SessionExerciseMenu', () => {
     expect(screen.getByRole('button', { name: 'Back' })).toHaveClass('min-h-tap');
     fireEvent.click(screen.getByRole('button', { name: 'Incline Press' }));
     expect(screen.getByRole('button', { name: 'Cancel' })).toHaveClass('min-h-tap');
-    expect(screen.getByRole('button', { name: /replace with incline press/i })).toHaveClass(
-      'min-h-tap',
-    );
+    expect(screen.getByRole('button', { name: 'Just today' })).toHaveClass('min-h-tap');
+    expect(screen.getByRole('button', { name: 'From now on' })).toHaveClass('min-h-tap');
   });
 
   it('starts from the new exercise targets when a replace crosses the cardio line', async () => {
@@ -304,12 +331,13 @@ describe('SessionExerciseMenu', () => {
         programExercises={[programExercise, nextProgramExercise]}
         catalog={[bench, chestCardio, row]}
         loggedSetCount={0}
+        sessionId="session-1"
         onChanged={vi.fn()}
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Replace exercise' }));
     fireEvent.click(screen.getByRole('button', { name: 'Ski Erg' }));
-    fireEvent.click(screen.getByRole('button', { name: /replace with ski erg/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Just today' }));
     await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
     expect(JSON.parse(vi.mocked(fetch).mock.calls[0]![1]?.body as string)).toMatchObject({
       exerciseId: 'ski-erg',
@@ -330,6 +358,7 @@ describe('SessionExerciseMenu', () => {
         programExercises={[programExercise]}
         catalog={[bench, incline, row]}
         loggedSetCount={0}
+        sessionId="session-1"
         onChanged={vi.fn()}
       />,
     );
@@ -347,15 +376,34 @@ describe('SessionExerciseMenu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove exercise' }));
     expect(fetch).not.toHaveBeenCalled();
     expect(screen.getByText(/remain in history/i)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Remove exercise' }));
+    fireEvent.click(screen.getByRole('button', { name: 'From now on' }));
     await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
     const [url, init] = vi.mocked(fetch).mock.calls[0]!;
-    expect(url).toBe('/api/program-exercises/pe-bench');
+    expect(url).toBe('/api/sessions/session-1/exercises/pe-bench?scope=program');
     expect(init?.method).toBe('DELETE');
-    expect(onChanged).toHaveBeenCalledWith({
-      selectProgramExerciseId: 'pe-row',
-      removedProgramExerciseId: 'pe-bench',
-    });
+    await waitFor(() =>
+      expect(onChanged).toHaveBeenCalledWith({
+        selectProgramExerciseId: 'pe-row',
+        removedProgramExerciseId: 'pe-bench',
+      }),
+    );
+  });
+
+  it('keeps the runner on its position when the first change copied the workout', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, copied: true }),
+    } as Response);
+    const onChanged = vi.fn();
+    renderMenu(0, onChanged);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove exercise' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Just today' }));
+    await waitFor(() => expect(onChanged).toHaveBeenCalledOnce());
+    expect(vi.mocked(fetch).mock.calls[0]![0]).toBe(
+      '/api/sessions/session-1/exercises/pe-bench?scope=today',
+    );
+    // The old ids no longer exist, so no row is named.
+    expect(onChanged).toHaveBeenCalledWith(undefined);
   });
 
   it('names the duplicate when the server refuses an exercise already in the workout (#426)', async () => {
@@ -364,6 +412,7 @@ describe('SessionExerciseMenu', () => {
     renderMenu(0, onChanged);
     fireEvent.click(screen.getByRole('button', { name: 'Add exercise' }));
     fireEvent.click(screen.getByRole('button', { name: 'Incline Press' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Just today' }));
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith('That exercise is already in this workout.'),
     );
@@ -375,6 +424,7 @@ describe('SessionExerciseMenu', () => {
     renderMenu();
     fireEvent.click(screen.getByRole('button', { name: 'Add exercise' }));
     fireEvent.click(screen.getByRole('button', { name: 'Incline Press' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Just today' }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Could not add the exercise.'));
   });
 
@@ -388,6 +438,7 @@ describe('SessionExerciseMenu', () => {
         programExercises={[programExercise, nextProgramExercise]}
         catalog={[bench, incline, favoriteDecline, row]}
         loggedSetCount={0}
+        sessionId="session-1"
         onChanged={vi.fn()}
       />,
     );
@@ -428,7 +479,8 @@ describe('SessionExerciseMenu in a freestyle session', () => {
         programExercises={[freestyleRow]}
         catalog={[bench, incline, row]}
         loggedSetCount={loggedSetCount}
-        freestyleSessionId="session 1"
+        sessionId="session 1"
+        freestyle
         onChanged={onChanged}
       />,
     );

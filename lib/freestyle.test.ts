@@ -32,6 +32,17 @@ function row(id: string, exercise: Exercise, order: number): FreestyleRow {
     targetRepsMax: 10,
     targetRIR: 1,
     restSec: 90,
+    // A freestyle row leaves the program fields at their column defaults.
+    programExerciseId: null,
+    tempo: null,
+    notes: null,
+    supersetGroup: null,
+    autoregulationMode: 'PRESERVE_RIR',
+    fatigueRate: null,
+    loadAdjustmentPct: null,
+    targetDurationSec: null,
+    targetDistanceM: null,
+    skippedAt: null,
   };
 }
 
@@ -90,6 +101,32 @@ describe('toRunnerExercises (issue #388)', () => {
       notes: null,
       autoregulationMode: 'PRESERVE_RIR',
       ...defaultIntraSetConfig(bench),
+    });
+  });
+
+  it("keeps a copied workout row's program fields (lib/session-plan.ts)", () => {
+    const copied = {
+      ...row('a', bike, 1),
+      programExerciseId: 'pe1',
+      tempo: '3-1-1',
+      notes: 'Easy pace',
+      supersetGroup: 2,
+      autoregulationMode: 'PRESERVE_REPS' as const,
+      fatigueRate: 0.5,
+      loadAdjustmentPct: 4,
+      targetDurationSec: 600,
+      targetDistanceM: 3000,
+    };
+    expect(toRunnerExercises([copied])[0]).toMatchObject({
+      workoutId: '',
+      tempo: '3-1-1',
+      notes: 'Easy pace',
+      supersetGroup: 2,
+      autoregulationMode: 'PRESERVE_REPS',
+      fatigueRate: 0.5,
+      loadAdjustmentPct: 4,
+      targetDurationSec: 600,
+      targetDistanceM: 3000,
     });
   });
 

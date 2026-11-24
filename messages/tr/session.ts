@@ -245,25 +245,30 @@ export const session = {
   exerciseMenu: {
     actions: 'Egzersiz işlemleri',
     actionsDescription:
-      'Bu işlemler kayıtlı programını değiştirir, bu yüzden bu antrenmanın sonraki seanslarına da uygulanır.',
+      'Her değişiklikte seçersin: sadece bugün mü, bundan sonra mı. “Bundan sonra” seçeneği kayıtlı programını da değiştirir.',
     replace: 'Egzersizi değiştir',
     replaceDescription:
-      'Başka bir egzersiz seç. Kayıtlı programında bunun yerine geçer, bu ve sonraki seanslarda.',
+      'Başka bir egzersiz seç. Sonra seçersin: sadece bugün mü, yoksa bundan sonra kayıtlı programında da mı.',
     addExercises: 'Egzersiz ekle',
     addDescription:
-      'Bu antrenmanın sonuna bir egzersiz ekle. Sonraki seanslar için programına da kaydedilir.',
+      'Bu antrenmanın sonuna bir egzersiz ekle. Sonra seçersin: sadece bugün mü, yoksa bundan sonra kayıtlı programında da mı.',
     remove: 'Egzersizi kaldır',
-    removeDescription: 'Bu egzersizi kayıtlı programından kaldır, bu ve sonraki seanslar için.',
+    removeDescription: 'Bu egzersizi sadece bugün ya da bundan sonra kayıtlı programından kaldır.',
     searchExercises: 'Egzersiz ara',
     noExercises: 'Eşleşen egzersiz yok.',
     favoriteChoice: 'favori: {name}',
     replaceConfirm:
-      'Bu, egzersizi kayıtlı programında değiştirir; sonraki seanslar da değişir. Değiştirilsin mi?',
+      'Sadece bugün mü değiştirilsin, bundan sonra mı? “Bundan sonra” seçeneği kayıtlı programını da değiştirir.',
     replaceLoggedWarning:
-      'Bu seansta kaydedilen setler geçmişte eski egzersizin altında kalır ama bu ekranda artık görünmez. Kayıtlı programın sonraki seanslar için de değişir. Değiştirilsin mi?',
+      'Bu seansta kaydedilen setler geçmişte eski egzersizin altında kalır ama bu ekranda artık görünmez. Sadece bugün mü değiştirilsin, bundan sonra mı?',
     removeLoggedWarning:
-      'Kaydedilen setler geçmişte kalır ama bu ekranda artık görünmez. Egzersiz, sonraki seanslar dahil kayıtlı programından kaldırılır.',
-    removeConfirm: 'Bu egzersiz kayıtlı programından kaldırılsın mı? Sonraki seanslar da değişir.',
+      'Kaydedilen setler geçmişte kalır ama bu ekranda artık görünmez. Sadece bugün mü kaldırılsın, bundan sonra mı?',
+    removeConfirm:
+      'Sadece bugün mü kaldırılsın, bundan sonra mı? “Bundan sonra” seçeneği kayıtlı programını da değiştirir.',
+    addConfirm:
+      '{name} sadece bugün mü eklensin, bundan sonra mı? “Bundan sonra” seçeneği onu kayıtlı programına da ekler.',
+    justToday: 'Sadece bugün',
+    fromNowOn: 'Bundan sonra',
     removeLastBlocked:
       'Bu, antrenmandaki tek egzersiz; burada kaldırılamaz. Bunun yerine değiştir.',
     confirmReplace: 'Şununla değiştir: {name}',

@@ -24,9 +24,11 @@ export function addedExerciseTargets(exercise: Pick<Exercise, 'id' | 'category' 
 }
 
 // The runner reads a row's id (as its key and in navigation), its targets and
-// its exercise. The fields a freestyle row does not store take the defaults a
-// freshly added program exercise would get; `workoutId` is empty because no
-// workout exists, and nothing may send it to a workout route.
+// its exercise. A freestyle row leaves the program fields empty, so they take
+// the defaults a freshly added program exercise would get; a copy of a
+// workout (lib/session-plan.ts) carries the copied values. `workoutId` is
+// empty because the row is not a workout's, and nothing may send it to a
+// workout route.
 export function toRunnerExercises(rows: FreestyleRow[]): RunnerExercise[] {
   return [...rows]
     .sort((a, b) => a.order - b.order)
@@ -43,15 +45,14 @@ export function toRunnerExercises(rows: FreestyleRow[]): RunnerExercise[] {
         targetRepsMax: row.targetRepsMax,
         targetRIR: row.targetRIR,
         restSec: row.restSec,
-        tempo: null,
-        notes: null,
-        supersetGroup: null,
-        autoregulationMode: 'PRESERVE_RIR' as const,
-        fatigueRate: autoregulation.fatigueRate,
-        loadAdjustmentPct: autoregulation.loadAdjustmentPct,
-        // A freestyle row stores no cardio target (issue #558 covers workouts).
-        targetDurationSec: null,
-        targetDistanceM: null,
+        tempo: row.tempo,
+        notes: row.notes,
+        supersetGroup: row.supersetGroup,
+        autoregulationMode: row.autoregulationMode,
+        fatigueRate: row.fatigueRate ?? autoregulation.fatigueRate,
+        loadAdjustmentPct: row.loadAdjustmentPct ?? autoregulation.loadAdjustmentPct,
+        targetDurationSec: row.targetDurationSec,
+        targetDistanceM: row.targetDistanceM,
       };
     });
 }

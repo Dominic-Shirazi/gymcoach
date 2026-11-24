@@ -239,26 +239,31 @@ export const session = {
   exerciseMenu: {
     actions: 'Exercise actions',
     actionsDescription:
-      'These actions change your saved program, so they also apply to future sessions of this workout.',
+      'Each change asks whether it is just for today or from now on. From now on also changes your saved program.',
     replace: 'Replace exercise',
     replaceDescription:
-      'Choose another exercise. It replaces this one in your saved program, for this and future sessions.',
+      'Choose another exercise. Next you choose: just today, or from now on in your saved program too.',
     addExercises: 'Add exercise',
     addDescription:
-      'Add an exercise to the end of this workout. It is saved to your program for future sessions too.',
+      'Add an exercise to the end of this workout. Next you choose: just today, or from now on in your saved program too.',
     remove: 'Remove exercise',
     removeDescription:
-      'Remove this exercise from your saved program, for this and future sessions.',
+      'Remove this exercise just today, or from your saved program from now on.',
     searchExercises: 'Search exercises',
     noExercises: 'No matching exercises.',
     favoriteChoice: 'favourite: {name}',
     replaceConfirm:
-      'This replaces the exercise in your saved program, so future sessions change too. Replace it?',
+      'Replace it just today, or from now on? From now on also changes your saved program.',
     replaceLoggedWarning:
-      'Sets already logged in this session stay in your history under the original exercise, but they are no longer shown on this screen. Your saved program changes for future sessions too. Replace it?',
+      'Sets already logged in this session stay in your history under the original exercise, but they are no longer shown on this screen. Replace it just today, or from now on?',
     removeLoggedWarning:
-      'Sets already logged remain in history, but they are no longer shown on this screen. The exercise is removed from your saved program, for future sessions too.',
-    removeConfirm: 'Remove this exercise from your saved program? Future sessions change too.',
+      'Sets already logged remain in history, but they are no longer shown on this screen. Remove it just today, or from now on?',
+    removeConfirm:
+      'Remove it just today, or from now on? From now on also changes your saved program.',
+    addConfirm:
+      'Add {name} just today, or from now on? From now on also adds it to your saved program.',
+    justToday: 'Just today',
+    fromNowOn: 'From now on',
     removeLastBlocked:
       'This is the only exercise in the workout, so it cannot be removed here. Replace it instead.',
     confirmReplace: 'Replace with {name}',

@@ -246,25 +246,29 @@ export const session = {
   exerciseMenu: {
     actions: 'Opcje ćwiczenia',
     actionsDescription:
-      'Te działania zmieniają zapisany program, więc dotyczą też przyszłych sesji tego treningu.',
+      'Przy każdej zmianie wybierasz: tylko dziś czy od teraz. Opcja „Od teraz” zmienia też zapisany program.',
     replace: 'Zamień ćwiczenie',
     replaceDescription:
-      'Wybierz inne ćwiczenie. Zastąpi to w zapisanym programie, w tej i w przyszłych sesjach.',
+      'Wybierz inne ćwiczenie. Potem wybierzesz: tylko dziś czy od teraz, także w zapisanym programie.',
     addExercises: 'Dodaj ćwiczenie',
     addDescription:
-      'Dodaj ćwiczenie na koniec tego treningu. Zostanie też zapisane w programie na przyszłe sesje.',
+      'Dodaj ćwiczenie na koniec tego treningu. Potem wybierzesz: tylko dziś czy od teraz, także w zapisanym programie.',
     remove: 'Usuń ćwiczenie',
-    removeDescription: 'Usuń to ćwiczenie z zapisanego programu, w tej i w przyszłych sesjach.',
+    removeDescription: 'Usuń to ćwiczenie tylko dziś albo od teraz z zapisanego programu.',
     searchExercises: 'Szukaj ćwiczeń',
     noExercises: 'Brak pasujących ćwiczeń.',
     favoriteChoice: 'ulubione: {name}',
     replaceConfirm:
-      'To zamieni ćwiczenie w zapisanym programie, więc przyszłe sesje też się zmienią. Zamienić?',
+      'Zamienić tylko dziś czy od teraz? Opcja „Od teraz” zmienia też zapisany program.',
     replaceLoggedWarning:
-      'Serie zapisane już w tej sesji zostaną w historii pod pierwotnym ćwiczeniem, ale nie będą widoczne na tym ekranie. Zapisany program zmieni się też dla przyszłych sesji. Zamienić?',
+      'Serie zapisane już w tej sesji zostaną w historii pod pierwotnym ćwiczeniem, ale nie będą widoczne na tym ekranie. Zamienić tylko dziś czy od teraz?',
     removeLoggedWarning:
-      'Zapisane serie zostaną w historii, ale nie będą widoczne na tym ekranie. Ćwiczenie zostanie usunięte z zapisanego programu, także na przyszłe sesje.',
-    removeConfirm: 'Usunąć to ćwiczenie z zapisanego programu? Przyszłe sesje też się zmienią.',
+      'Zapisane serie zostaną w historii, ale nie będą widoczne na tym ekranie. Usunąć tylko dziś czy od teraz?',
+    removeConfirm: 'Usunąć tylko dziś czy od teraz? Opcja „Od teraz” zmienia też zapisany program.',
+    addConfirm:
+      'Dodać {name} tylko dziś czy od teraz? Opcja „Od teraz” dodaje je też do zapisanego programu.',
+    justToday: 'Tylko dziś',
+    fromNowOn: 'Od teraz',
     removeLastBlocked:
       'To jedyne ćwiczenie w treningu, więc nie da się go tu usunąć. Zamiast tego je zamień.',
     confirmReplace: 'Zamień na {name}',

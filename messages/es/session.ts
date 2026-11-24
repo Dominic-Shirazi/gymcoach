@@ -245,27 +245,31 @@ export const session = {
   exerciseMenu: {
     actions: 'Acciones del ejercicio',
     actionsDescription:
-      'Estas acciones cambian tu programa guardado, así que también se aplican a las próximas sesiones de este entrenamiento.',
+      'Cada cambio te pregunta si es solo para hoy o a partir de ahora. «A partir de ahora» también cambia tu programa guardado.',
     replace: 'Sustituir ejercicio',
     replaceDescription:
-      'Elige otro ejercicio. Sustituye a este en tu programa guardado, para esta sesión y las siguientes.',
+      'Elige otro ejercicio. Después eliges: solo hoy, o a partir de ahora también en tu programa guardado.',
     addExercises: 'Añadir ejercicio',
     addDescription:
-      'Añade un ejercicio al final de este entrenamiento. También se guarda en tu programa para las próximas sesiones.',
+      'Añade un ejercicio al final de este entrenamiento. Después eliges: solo hoy, o a partir de ahora también en tu programa guardado.',
     remove: 'Quitar ejercicio',
     removeDescription:
-      'Quita este ejercicio de tu programa guardado, para esta sesión y las siguientes.',
+      'Quita este ejercicio solo hoy, o de tu programa guardado a partir de ahora.',
     searchExercises: 'Buscar ejercicios',
     noExercises: 'Ningún ejercicio coincide.',
     favoriteChoice: 'favorito: {name}',
     replaceConfirm:
-      'Esto sustituye el ejercicio en tu programa guardado, así que las próximas sesiones también cambian. ¿Sustituirlo?',
+      '¿Sustituirlo solo hoy o a partir de ahora? «A partir de ahora» también cambia tu programa guardado.',
     replaceLoggedWarning:
-      'Las series ya registradas en esta sesión se quedan en tu historial con el ejercicio original, pero ya no se muestran en esta pantalla. Tu programa guardado también cambia para las próximas sesiones. ¿Sustituirlo?',
+      'Las series ya registradas en esta sesión se quedan en tu historial con el ejercicio original, pero ya no se muestran en esta pantalla. ¿Sustituirlo solo hoy o a partir de ahora?',
     removeLoggedWarning:
-      'Las series ya registradas se quedan en el historial, pero ya no se muestran en esta pantalla. El ejercicio se quita de tu programa guardado, también para las próximas sesiones.',
+      'Las series ya registradas se quedan en el historial, pero ya no se muestran en esta pantalla. ¿Quitarlo solo hoy o a partir de ahora?',
     removeConfirm:
-      '¿Quitar este ejercicio de tu programa guardado? Las próximas sesiones también cambian.',
+      '¿Quitarlo solo hoy o a partir de ahora? «A partir de ahora» también cambia tu programa guardado.',
+    addConfirm:
+      '¿Añadir {name} solo hoy o a partir de ahora? «A partir de ahora» también lo añade a tu programa guardado.',
+    justToday: 'Solo hoy',
+    fromNowOn: 'A partir de ahora',
     removeLastBlocked:
       'Es el único ejercicio del entrenamiento, así que no se puede quitar aquí. Sustitúyelo en su lugar.',
     confirmReplace: 'Sustituir por {name}',
