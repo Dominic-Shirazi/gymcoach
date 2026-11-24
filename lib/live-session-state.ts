@@ -1,7 +1,7 @@
 import type { WeightUnit } from '@/lib/prisma-client';
 import { db } from '@/lib/db';
 import { ApiError } from '@/lib/api';
-import { getLastPerformances } from '@/lib/last-performance';
+import { getLastPerformances, type LastPerformance } from '@/lib/last-performance';
 import { isDeloadActive } from '@/lib/deload';
 import { getReturnToTrainingRecommendations } from '@/lib/return-to-training-history';
 import { liveSessionGymInclude } from '@/lib/session-gym-selection';
@@ -150,6 +150,14 @@ export async function getOwnedSessionState(userId: string, sessionId?: string) {
     completedAt: set.completedAt.toISOString(),
   });
 
+  const lastTimeView = (perf: LastPerformance | undefined) =>
+    perf
+      ? {
+          sessionStartedAt: perf.sessionStartedAt.toISOString(),
+          sets: perf.sets.map((set) => ({ weight: display(set.weight), reps: set.reps, rir: set.rir })),
+        }
+      : null;
+
   const exercises = rows.map((pe) => {
     const key = rowBlockKey(pe, rowBlocks);
     const done = setsByKey.get(key) ?? [];
@@ -180,6 +188,9 @@ export async function getOwnedSessionState(userId: string, sessionId?: string) {
       nextSetNumber: (done.at(-1)?.setNumber ?? 0) + 1,
       block: rowBlocks.get(pe.id) ?? null,
       sets: done.map(view),
+      // The previous session's working sets of this row, so a voice coach can
+      // say "last time 40 for 10, 9, 8" and how long ago that was.
+      lastTime: lastTimeView(lastPerformances.get(key)),
     };
   });
 
