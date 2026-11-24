@@ -53,6 +53,7 @@ import {
 } from '@/lib/live-session';
 import { getOwnedSessionState, type LiveSessionState } from '@/lib/live-session-state';
 import { setInputSchema, setUpdateSchema } from '@/lib/schemas/set';
+import { getExerciseHistory, HISTORY_MAX_SESSIONS } from '@/lib/exercise-history';
 import { aiParseSetWithFailure } from '@/lib/set-parse';
 import { describeLlmFailure } from '@/lib/llm/errors';
 import { getLlmProvider } from '@/lib/llm';
@@ -157,7 +158,7 @@ const MCP_CAPABILITY_GROUPS = {
     ],
   },
   liveSession: {
-    read: ['get_session_state'],
+    read: ['get_session_state', 'get_exercise_history'],
     write: [
       'start_session',
       'log_set',
@@ -1010,6 +1011,25 @@ export function createGymCoachMcpServer({ principal, baseUrl }: ServerOptions): 
   );
 
   server.registerTool(
+    'get_exercise_history',
+    {
+      title: 'Get one exercise history',
+      description:
+        "Recent sessions of one exercise (sets in the trainee's unit), its all-time heaviest set and best estimated 1RM, and the trend of the best estimated 1RM over those sessions (up, flat, down or not_enough_data, with the percent change and whether it is stalled). Find the exercise by exerciseId or by a name query; a query matching several exercises returns found: false with candidates to ask about. For \"is that a PR\" during a workout, read lastSet.prs from get_session_state instead.",
+      inputSchema: {
+        exerciseId: databaseIdSchema.describe('Opaque exercise ID from list_exercises or get_session_state.').optional(),
+        query: z.string().trim().min(2).max(80).describe('Part of the exercise name, e.g. "bench" or "goblet squat".').optional(),
+        sessions: z.number().int().min(1).max(HISTORY_MAX_SESSIONS).optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    guardToolHandler(async ({ exerciseId, query, sessions }) => {
+      if (!exerciseId && !query) throw new Error('Give an exerciseId or a query.');
+      return result(await getExerciseHistory(principal.userId, { exerciseId, query, sessions }));
+    }),
+  );
+
+  server.registerTool(
     'start_session',
     {
       title: 'Start or resume a workout session',
@@ -1163,12 +1183,19 @@ export function createGymCoachMcpServer({ principal, baseUrl }: ServerOptions): 
     {
       title: 'Correct the last logged set',
       description:
-        "Corrects the weight (trainee's unit), reps or RIR of the session's most recent strength set. Omitted fields keep their logged value.",
+        "Corrects the weight (trainee's unit), reps, RIR or note of the session's most recent strength set. Omitted fields keep their logged value.",
       inputSchema: {
         sessionId: sessionIdSchema,
         weight: liveWeight.optional(),
         reps: z.number().int().min(0).max(100).optional(),
         rir: z.number().int().min(0).max(5).nullable().optional(),
+        notes: z
+          .string()
+          .trim()
+          .max(500)
+          .nullable()
+          .optional()
+          .describe('Replaces the set note; omit to keep it, null to clear it.'),
       },
       annotations: {
         readOnlyHint: false,
@@ -1177,7 +1204,7 @@ export function createGymCoachMcpServer({ principal, baseUrl }: ServerOptions): 
         openWorldHint: false,
       },
     },
-    guardToolHandler(async ({ sessionId, weight, reps, rir }) => {
+    guardToolHandler(async ({ sessionId, weight, reps, rir, notes }) => {
       requireWrite(principal);
       const state = await liveState(sessionId);
       const last = lastSetOf(state);
@@ -1186,6 +1213,7 @@ export function createGymCoachMcpServer({ principal, baseUrl }: ServerOptions): 
         weight: weight != null ? fromDisplayWeight(weight, unit) : last.weightKg,
         reps: reps ?? last.reps,
         rir: rir === undefined ? last.rir : rir,
+        ...(notes !== undefined ? { notes } : {}),
       });
       await updateOwnedSet(principal.userId, last.setId, data);
       return result({ ok: true, editedSetId: last.setId, ...(await liveState(state.session.id)) });
