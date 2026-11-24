@@ -42,6 +42,41 @@ export function matchExercises<T extends Candidate>(query: string, exercises: T[
   });
 }
 
+// Several exercises match a name ("bench"): the one in the active program
+// wins, then one with logged sets. A unique winner is used; otherwise the
+// candidates come back in that order for the caller to ask about.
+export function pickMatch<T extends Candidate>(
+  matches: T[],
+  inActiveProgram: ReadonlySet<string>,
+  logged: ReadonlySet<string>,
+): { order: T[]; unique: boolean } {
+  const score = (m: T) => (inActiveProgram.has(m.id) ? 2 : 0) + (logged.has(m.id) ? 1 : 0);
+  const order = [...matches].sort((a, b) => score(b) - score(a));
+  const top = score(order[0]!);
+  const unique = top > 0 && (order.length === 1 || score(order[1]!) < top);
+  return { order, unique };
+}
+
+async function rankMatches<T extends Candidate>(userId: string, matches: T[]) {
+  const ids = matches.map((m) => m.id);
+  const [programRows, loggedRows] = await Promise.all([
+    db.programExercise.findMany({
+      where: { exerciseId: { in: ids }, workout: { program: { userId, isActive: true } } },
+      select: { exerciseId: true },
+    }),
+    db.set.findMany({
+      where: { exerciseId: { in: ids }, session: { userId } },
+      select: { exerciseId: true },
+      distinct: ['exerciseId'],
+    }),
+  ]);
+  return pickMatch(
+    matches,
+    new Set(programRows.map((r) => r.exerciseId)),
+    new Set(loggedRows.map((r) => r.exerciseId)),
+  );
+}
+
 export function trendOf(e1rms: number[]): { trend: Trend; changePct: number | null } {
   if (e1rms.length < TREND_MIN_SESSIONS) return { trend: 'not_enough_data', changePct: null };
   const first = e1rms[0]!;
@@ -72,9 +107,14 @@ export async function getExerciseHistory(
     const matches = matchExercises(input.query, all);
     if (matches.length === 0) return { found: false as const, query: input.query, candidates: [] };
     if (matches.length > 1) {
-      return { found: false as const, query: input.query, candidates: matches.slice(0, 8).map((m) => m.name) };
+      const ranked = await rankMatches(userId, matches);
+      if (!ranked.unique) {
+        return { found: false as const, query: input.query, candidates: ranked.order.slice(0, 8).map((m) => m.name) };
+      }
+      exercise = ranked.order[0]!;
+    } else {
+      exercise = matches[0]!;
     }
-    exercise = matches[0]!;
   } else {
     throw new ApiError(400, 'Give an exerciseId or a query.');
   }

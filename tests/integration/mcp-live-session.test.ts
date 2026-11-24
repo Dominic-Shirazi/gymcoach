@@ -360,13 +360,24 @@ describe('GymCoach MCP live session', () => {
     expect(history.records.heaviest).toMatchObject({ weight: 45, reps: 8 });
     expect(history.trend.trend).toBe('not_enough_data');
 
-    // An ambiguous name comes back as candidates to ask about.
-    const ambiguous = (await call(client, 'get_exercise_history', { query: 'er' })) as unknown as {
+    // Several names match "er": the one in the active program with logged
+    // sets wins over the one that is only in the program.
+    const ranked = (await call(client, 'get_exercise_history', { query: 'er' })) as unknown as {
+      found: boolean;
+      exercise: { name: string };
+    };
+    expect(ranked).toMatchObject({ found: true, exercise: { name: 'Seated dumbbell overhead press' } });
+
+    // Matches with nothing to choose between come back as candidates.
+    for (const name of ['Cable fly high', 'Cable fly low']) {
+      await db.exercise.create({ data: { userId: user.id, name, muscleGroup: 'CHEST', category: 'ISOLATION' } });
+    }
+    const ambiguous = (await call(client, 'get_exercise_history', { query: 'cable fly' })) as unknown as {
       found: boolean;
       candidates: string[];
     };
     expect(ambiguous.found).toBe(false);
-    expect(ambiguous.candidates.sort()).toEqual(['Hammer curl', 'Seated dumbbell overhead press']);
+    expect(ambiguous.candidates.sort()).toEqual(['Cable fly high', 'Cable fly low']);
   });
 
   it('refuses a strength set without weight and reps instead of inventing them', async () => {
