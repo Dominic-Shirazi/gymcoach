@@ -298,6 +298,16 @@ export async function getOwnedSessionState(userId: string, sessionId?: string) {
         }
       : null,
     exercises,
+    // Exercises skipped for this session (lib/session-plan.ts): off the plan
+    // above, kept so a skip can be taken back.
+    skipped: session.exercises
+      .filter((row) => row.skippedAt != null)
+      .map((row) => ({
+        programExerciseId: row.id,
+        exerciseId: row.exerciseId,
+        name: row.exercise.name,
+        skippedAt: row.skippedAt!.toISOString(),
+      })),
   };
 }
 
