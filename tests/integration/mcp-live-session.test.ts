@@ -316,6 +316,59 @@ describe('GymCoach MCP live session', () => {
     expect(second.exercises[1]!.lastTime).toBeNull();
   });
 
+  it('flags records on the last set, answers history questions and keeps set notes', async () => {
+    const { user, workout } = await seed('mcp-live-history@test.dev');
+    const client = await connect(user.id);
+
+    await call(client, 'start_session', { workoutId: workout.id });
+    const first = (await call(client, 'log_set', { weight: 40, reps: 10, rir: 2 })) as State & {
+      lastSet: SetView & { prs: string[] };
+    };
+    // The very first working set is a record of both kinds.
+    expect(first.lastSet.prs).toEqual(['weight', 'e1rm']);
+    const second = (await call(client, 'log_set', { weight: 40, reps: 9, rir: 1 })) as State & {
+      lastSet: SetView & { prs: string[] };
+    };
+    expect(second.lastSet.prs).toEqual([]);
+    await call(client, 'finish_session', {});
+
+    await call(client, 'start_session', { workoutId: workout.id });
+    const heavier = (await call(client, 'log_set', { weight: 45, reps: 8, rir: 2 })) as State & {
+      lastSet: SetView & { prs: string[] };
+    };
+    expect(heavier.lastSet.prs).toEqual(['weight', 'e1rm']);
+
+    // A note added to the last set, the rest unchanged.
+    const noted = await call(client, 'edit_last_set', { notes: 'Pain reported: left wrist.' });
+    expect(noted.lastSet).toMatchObject({ weight: 45, reps: 8, notes: 'Pain reported: left wrist.' });
+
+    const history = (await call(client, 'get_exercise_history', { query: 'overhead' })) as unknown as {
+      found: boolean;
+      exercise: { name: string };
+      unit: string;
+      sessions: { sets: { weight: number; reps: number }[] }[];
+      records: { heaviest: { weight: number; reps: number } };
+      trend: { trend: string };
+    };
+    expect(history.found).toBe(true);
+    expect(history.exercise.name).toBe('Seated dumbbell overhead press');
+    expect(history.unit).toBe('lb');
+    expect(history.sessions.map((s) => s.sets.map((x) => [x.weight, x.reps]))).toEqual([
+      [[40, 10], [40, 9]],
+      [[45, 8]],
+    ]);
+    expect(history.records.heaviest).toMatchObject({ weight: 45, reps: 8 });
+    expect(history.trend.trend).toBe('not_enough_data');
+
+    // An ambiguous name comes back as candidates to ask about.
+    const ambiguous = (await call(client, 'get_exercise_history', { query: 'er' })) as unknown as {
+      found: boolean;
+      candidates: string[];
+    };
+    expect(ambiguous.found).toBe(false);
+    expect(ambiguous.candidates.sort()).toEqual(['Hammer curl', 'Seated dumbbell overhead press']);
+  });
+
   it('refuses a strength set without weight and reps instead of inventing them', async () => {
     const { user, workout } = await seed('mcp-live-partial@test.dev');
     const client = await connect(user.id);

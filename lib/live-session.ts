@@ -260,7 +260,12 @@ export async function updateOwnedSet(
     await lockExerciseGoal(tx, userId, set.exerciseId);
     const row = await tx.set.update({
       where: { id: set.id, session: { userId } },
-      data: { weight: data.weight, reps: data.reps, rir: data.rir },
+      data: {
+        weight: data.weight,
+        reps: data.reps,
+        rir: data.rir,
+        ...(data.notes !== undefined ? { notes: data.notes } : {}),
+      },
     });
     await rederiveGoalAchievement(tx, userId, set.exerciseId, true);
     return row;

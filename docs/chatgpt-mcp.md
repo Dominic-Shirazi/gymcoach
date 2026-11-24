@@ -74,7 +74,11 @@ Read tools:
 - `get_session_state` (the unfinished or given workout session: per exercise the
   targets, form cue, sets done and completion; the current exercise; the next
   set's weight in kg and in the trainee's unit, reps, RIR and `toFailure`; the
-  last set and the rest countdown)
+  last set with the records it beat (`prs`) and the rest countdown)
+- `get_exercise_history` (one exercise, found by ID or by part of its name:
+  recent sessions in the trainee's unit, the all-time heaviest set and best
+  estimated 1RM, and the trend of that estimate; an ambiguous name returns the
+  candidates)
 
 Write tools:
 
@@ -104,7 +108,7 @@ Write tools:
   unit and reps, or a cardio duration)
 - `log_set_from_text` (parses the trainee's words with the app's set parser and
   logs the set; the words are kept as the set note)
-- `edit_last_set` (correct weight, reps or RIR of the most recent set)
+- `edit_last_set` (correct weight, reps, RIR or note of the most recent set)
 - `delete_last_set` (needs `confirmed: true`)
 - `finish_session` (optional session notes; a late finish is dated at the last
   set)

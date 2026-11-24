@@ -56,6 +56,9 @@ export type SetInput = z.infer<typeof setInputSchema>;
 export const setUpdateSchema = setInputSchema.pick({
   weight: true,
   reps: true,
+  // Optional: omitted keeps the set's note (a voice coach adds "pain
+  // reported" to the set it was said on).
+  notes: true,
 }).extend({
   rir: z.union([z.null(), z.coerce.number().int().min(0).max(5)]),
 });

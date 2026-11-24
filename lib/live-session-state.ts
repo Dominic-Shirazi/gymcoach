@@ -2,6 +2,7 @@ import type { WeightUnit } from '@/lib/prisma-client';
 import { db } from '@/lib/db';
 import { ApiError } from '@/lib/api';
 import { getLastPerformances, type LastPerformance } from '@/lib/last-performance';
+import { detectPRs, type PRType } from '@/lib/records';
 import { isDeloadActive } from '@/lib/deload';
 import { getReturnToTrainingRecommendations } from '@/lib/return-to-training-history';
 import { liveSessionGymInclude } from '@/lib/session-gym-selection';
@@ -246,6 +247,24 @@ export async function getOwnedSessionState(userId: string, sessionId?: string) {
   }
 
   const lastSet = [...liveSets].sort((a, b) => b.createdAt - a.createdAt)[0];
+  // Records the last set beat, against every earlier working set of the
+  // exercise (all time, this session included), so a coach can say "that's
+  // a new best" or answer "is that a PR".
+  let lastSetPRs: PRType[] = [];
+  if (lastSet && !lastSet.isWarmup && lastSet.durationSec == null) {
+    const earlier = await db.set.findMany({
+      where: {
+        exerciseId: lastSet.exerciseId,
+        isWarmup: false,
+        durationSec: null,
+        id: { not: lastSet.id },
+        completedAt: { lte: lastSet.completedAt },
+        session: { userId },
+      },
+      select: { weight: true, reps: true, isWarmup: true },
+    });
+    lastSetPRs = detectPRs(lastSet, earlier);
+  }
   const restEndsAt =
     lastSet && !session.finishedAt
       ? new Date(
@@ -271,7 +290,7 @@ export async function getOwnedSessionState(userId: string, sessionId?: string) {
     deloadActive,
     currentExerciseIndex: currentIndex >= 0 ? currentIndex : null,
     nextSet,
-    lastSet: lastSet ? view(lastSet) : null,
+    lastSet: lastSet ? { ...view(lastSet), prs: lastSetPRs } : null,
     rest: restEndsAt
       ? {
           endsAt: restEndsAt.toISOString(),
