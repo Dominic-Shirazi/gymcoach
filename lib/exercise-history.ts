@@ -36,10 +36,17 @@ export function matchExercises<T extends Candidate>(query: string, exercises: T[
   if (exact.length) return exact;
   const prefix = exercises.filter((e) => e.name.toLowerCase().startsWith(q));
   if (prefix.length) return prefix;
-  return exercises.filter((e) => {
+  const all = exercises.filter((e) => {
     const name = e.name.toLowerCase();
     return words.every((w) => name.includes(w));
   });
+  // Words in brackets describe the setup ("Incline dumbbell curl (bench 60
+  // deg)"), not the movement: a name holding the query outside them wins.
+  const outside = all.filter((e) => {
+    const name = e.name.toLowerCase().replace(/\([^)]*\)/g, ' ');
+    return words.every((w) => name.includes(w));
+  });
+  return outside.length ? outside : all;
 }
 
 // Several exercises match a name ("bench"): the one in the active program

@@ -16,6 +16,12 @@ describe('matchExercises', () => {
     expect(matchExercises('bench', catalog).map((e) => e.name)).toEqual(['Flat dumbbell bench press']);
   });
 
+  it('prefers names holding the words outside brackets', () => {
+    const withSetupNote = [...catalog, ex('Incline dumbbell curl (bench 60 deg)'), ex('Barbell bench press')];
+    expect(matchExercises('bench', withSetupNote).map((e) => e.name)).toEqual(['Flat dumbbell bench press', 'Barbell bench press']);
+    expect(matchExercises('60 deg', withSetupNote).map((e) => e.name)).toEqual(['Incline dumbbell curl (bench 60 deg)']);
+  });
+
   it('returns every match when the query is ambiguous', () => {
     expect(matchExercises('squat', catalog).map((e) => e.name)).toEqual(['Goblet squat', 'Bulgarian split squat']);
     expect(matchExercises('deadlift', catalog)).toEqual([]);
