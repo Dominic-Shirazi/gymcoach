@@ -34,7 +34,7 @@ describe('MCP write limit coverage', () => {
       ([, tool]) => tool.annotations?.readOnlyHint === false,
     );
     expect(writeTools.map(([name]) => name)).toContain('set_gym_equipment_image');
-    expect(writeTools.length).toBe(19);
+    expect(writeTools.length).toBe(23);
 
     for (const [name, tool] of writeTools) {
       await expect(tool.handler({}, {}), name).rejects.toThrow(/Too many write calls/);

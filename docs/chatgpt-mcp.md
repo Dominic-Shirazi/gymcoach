@@ -79,6 +79,9 @@ Read tools:
   recent sessions in the trainee's unit, the all-time heaviest set and best
   estimated 1RM, and the trend of that estimate; an ambiguous name returns the
   candidates)
+- `find_substitutes` (exercises that can replace the current one today: same
+  muscle group, not already on the list, doable with the session gym's
+  equipment; same category, favourites and recently done first)
 
 Write tools:
 
@@ -110,6 +113,13 @@ Write tools:
   logs the set; the words are kept as the set note)
 - `edit_last_set` (correct weight, reps, RIR or note of the most recent set)
 - `delete_last_set` (needs `confirmed: true`)
+- `swap_exercise`, `add_session_exercise` (optionally right after the current
+  exercise) and `remove_session_exercise` (needs `confirmed: true`) take a
+  `scope`: `today` changes only this session, which then runs its own copy of
+  the workout; `program` changes the saved workout too. Ask the trainee "just
+  today, or from now on?" first.
+- `skip_exercise` (this session only; the skip stays on record and
+  `skipped: false` takes it back)
 - `finish_session` (optional session notes; a late finish is dated at the last
   set)
 

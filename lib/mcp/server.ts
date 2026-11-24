@@ -54,6 +54,13 @@ import {
 import { getOwnedSessionState, type LiveSessionState } from '@/lib/live-session-state';
 import { setInputSchema, setUpdateSchema } from '@/lib/schemas/set';
 import { getExerciseHistory, HISTORY_MAX_SESSIONS } from '@/lib/exercise-history';
+import { findSubstitutes, SUBSTITUTES_MAX } from '@/lib/exercise-substitutes';
+import {
+  addSessionExercise,
+  removeSessionExercise,
+  skipSessionExercise,
+  swapSessionExercise,
+} from '@/lib/session-plan';
 import { aiParseSetWithFailure } from '@/lib/set-parse';
 import { describeLlmFailure } from '@/lib/llm/errors';
 import { getLlmProvider } from '@/lib/llm';
@@ -158,13 +165,17 @@ const MCP_CAPABILITY_GROUPS = {
     ],
   },
   liveSession: {
-    read: ['get_session_state', 'get_exercise_history'],
+    read: ['get_session_state', 'get_exercise_history', 'find_substitutes'],
     write: [
       'start_session',
       'log_set',
       'log_set_from_text',
       'edit_last_set',
       'delete_last_set',
+      'swap_exercise',
+      'skip_exercise',
+      'add_session_exercise',
+      'remove_session_exercise',
       'finish_session',
     ],
   },
@@ -1241,6 +1252,166 @@ export function createGymCoachMcpServer({ principal, baseUrl }: ServerOptions): 
       if (state.session.finishedAt) throw new Error('Session already finished.');
       await deleteOwnedSet(principal.userId, last.setId);
       return result({ ok: true, deleted: last, ...(await liveState(state.session.id)) });
+    }),
+  );
+
+  // Changes to today's list (lib/session-plan.ts). "today" runs a copy of the
+  // workout for this session and leaves the saved program alone; "program"
+  // edits the program too. The coach asks the trainee which one.
+  const planScope = z
+    .enum(['today', 'program'])
+    .describe(
+      'today: this session only, the saved program stays as it is. program: from now on, the saved program changes too. Ask the trainee ("just today, or from now on?") before choosing program.',
+    );
+
+  async function openLiveState(sessionId?: string) {
+    const state = await liveState(sessionId);
+    if (state.session.finishedAt) throw new Error('Session already finished.');
+    return state;
+  }
+
+  server.registerTool(
+    'find_substitutes',
+    {
+      title: 'Find substitutes for an exercise',
+      description:
+        "Exercises that can replace the current exercise (or programExerciseId) today: same primary muscle group, not already on today's list, and doable with the session gym's equipment. Best first: same category, favourites, most recently done. Pass one to swap_exercise.",
+      inputSchema: {
+        sessionId: sessionIdSchema,
+        programExerciseId: programExerciseIdSchema,
+        limit: z.number().int().min(1).max(SUBSTITUTES_MAX).optional(),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    guardToolHandler(async ({ sessionId, programExerciseId, limit }) => {
+      const state = await liveState(sessionId);
+      const row = liveRow(state, programExerciseId);
+      const session = await db.session.findFirst({
+        where: { id: state.session.id, userId: principal.userId },
+        select: { gymId: true },
+      });
+      const substitutes = await findSubstitutes(principal.userId, {
+        sessionId: state.session.id,
+        gymId: session?.gymId ?? null,
+        exerciseId: row.exerciseId,
+        onList: state.exercises.map((exercise) => exercise.exerciseId),
+        limit,
+      });
+      return result({ for: { programExerciseId: row.programExerciseId, name: row.name }, substitutes });
+    }),
+  );
+
+  server.registerTool(
+    'swap_exercise',
+    {
+      title: 'Swap an exercise',
+      description:
+        "Replaces the current exercise (or programExerciseId) with exerciseId, keeping its targets when both are strength or both cardio. scope today changes only this session; program also changes the saved workout. Sets already logged stay in history. Returns the new state; row IDs change after the first today change, so read them from it.",
+      inputSchema: {
+        sessionId: sessionIdSchema,
+        programExerciseId: programExerciseIdSchema,
+        exerciseId: databaseIdSchema.describe('Opaque exercise ID, e.g. from find_substitutes.'),
+        scope: planScope,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    guardToolHandler(async ({ sessionId, programExerciseId, exerciseId, scope }) => {
+      requireWrite(principal);
+      const state = await openLiveState(sessionId);
+      const row = liveRow(state, programExerciseId);
+      const change = await swapSessionExercise(principal.userId, state.session.id, {
+        rowId: row.programExerciseId,
+        exerciseId,
+        scope,
+      });
+      return result({ ok: true, ...change, ...(await liveState(state.session.id)) });
+    }),
+  );
+
+  server.registerTool(
+    'skip_exercise',
+    {
+      title: 'Skip an exercise for this session',
+      description:
+        'Skips the current exercise (or programExerciseId) for this session only: it leaves the plan, the next one becomes current, and the skip stays on record for the coach. skipped false takes a skip back (IDs in get_session_state skipped[]). The last exercise left cannot be skipped; finish the session instead.',
+      inputSchema: {
+        sessionId: sessionIdSchema,
+        programExerciseId: programExerciseIdSchema,
+        skipped: z.boolean().optional().describe('false takes a skip back. Default true.'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    guardToolHandler(async ({ sessionId, programExerciseId, skipped }) => {
+      requireWrite(principal);
+      const state = await openLiveState(sessionId);
+      const unskip = skipped === false;
+      const rowId = unskip
+        ? (programExerciseId ?? state.skipped.at(-1)?.programExerciseId)
+        : liveRow(state, programExerciseId).programExerciseId;
+      if (!rowId) throw new Error('Nothing is skipped in this session.');
+      const change = await skipSessionExercise(principal.userId, state.session.id, {
+        rowId,
+        skipped: !unskip,
+      });
+      return result({ ok: true, ...change, ...(await liveState(state.session.id)) });
+    }),
+  );
+
+  server.registerTool(
+    'add_session_exercise',
+    {
+      title: 'Add an exercise to the session',
+      description:
+        "Adds exerciseId with default targets (4 x 8-12 at RIR 2, its own rest; one set for cardio), right after the current exercise when next is true, else at the end. scope today adds it to this session only; program also adds it to the end of the saved workout.",
+      inputSchema: {
+        sessionId: sessionIdSchema,
+        exerciseId: databaseIdSchema.describe('Opaque exercise ID from list_exercises.'),
+        next: z.boolean().optional().describe('Place it right after the current exercise.'),
+        scope: planScope,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
+    guardToolHandler(async ({ sessionId, exerciseId, next, scope }) => {
+      requireWrite(principal);
+      const state = await openLiveState(sessionId);
+      const current =
+        next && state.currentExerciseIndex != null
+          ? state.exercises[state.currentExerciseIndex]?.programExerciseId
+          : undefined;
+      const change = await addSessionExercise(principal.userId, state.session.id, {
+        exerciseId,
+        scope,
+        afterRowId: current,
+      });
+      return result({ ok: true, ...change, ...(await liveState(state.session.id)) });
+    }),
+  );
+
+  server.registerTool(
+    'remove_session_exercise',
+    {
+      title: 'Remove an exercise from the session',
+      description:
+        'Removes programExerciseId after the trainee confirmed it. scope today removes it from this session only (prefer skip_exercise, which keeps it on record); program also deletes it from the saved workout. Sets already logged stay in history. A workout keeps at least one exercise.',
+      inputSchema: {
+        confirmed: explicitConfirmation,
+        sessionId: sessionIdSchema,
+        programExerciseId: databaseIdSchema.describe(
+          'Opaque row ID from get_session_state exercises[].programExerciseId.',
+        ),
+        scope: planScope,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+    },
+    guardToolHandler(async ({ sessionId, programExerciseId, scope }) => {
+      requireWrite(principal);
+      const state = await openLiveState(sessionId);
+      const row = liveRow(state, programExerciseId);
+      const change = await removeSessionExercise(principal.userId, state.session.id, {
+        rowId: row.programExerciseId,
+        scope,
+      });
+      return result({ ok: true, ...change, ...(await liveState(state.session.id)) });
     }),
   );
 

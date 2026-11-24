@@ -54,7 +54,12 @@ interface SetView {
 interface State {
   ok?: boolean;
   created?: boolean;
-  session: { id: string; startedAt: string; finishedAt: string | null; notes: string | null } | null;
+  session: {
+    id: string;
+    startedAt: string;
+    finishedAt: string | null;
+    notes: string | null;
+  } | null;
   unit: string;
   currentExerciseIndex: number | null;
   nextSet: {
@@ -340,9 +345,15 @@ describe('GymCoach MCP live session', () => {
 
     // A note added to the last set, the rest unchanged.
     const noted = await call(client, 'edit_last_set', { notes: 'Pain reported: left wrist.' });
-    expect(noted.lastSet).toMatchObject({ weight: 45, reps: 8, notes: 'Pain reported: left wrist.' });
+    expect(noted.lastSet).toMatchObject({
+      weight: 45,
+      reps: 8,
+      notes: 'Pain reported: left wrist.',
+    });
 
-    const history = (await call(client, 'get_exercise_history', { query: 'overhead' })) as unknown as {
+    const history = (await call(client, 'get_exercise_history', {
+      query: 'overhead',
+    })) as unknown as {
       found: boolean;
       exercise: { name: string };
       unit: string;
@@ -354,7 +365,10 @@ describe('GymCoach MCP live session', () => {
     expect(history.exercise.name).toBe('Seated dumbbell overhead press');
     expect(history.unit).toBe('lb');
     expect(history.sessions.map((s) => s.sets.map((x) => [x.weight, x.reps]))).toEqual([
-      [[40, 10], [40, 9]],
+      [
+        [40, 10],
+        [40, 9],
+      ],
       [[45, 8]],
     ]);
     expect(history.records.heaviest).toMatchObject({ weight: 45, reps: 8 });
@@ -366,13 +380,20 @@ describe('GymCoach MCP live session', () => {
       found: boolean;
       exercise: { name: string };
     };
-    expect(ranked).toMatchObject({ found: true, exercise: { name: 'Seated dumbbell overhead press' } });
+    expect(ranked).toMatchObject({
+      found: true,
+      exercise: { name: 'Seated dumbbell overhead press' },
+    });
 
     // Matches with nothing to choose between come back as candidates.
     for (const name of ['Cable fly high', 'Cable fly low']) {
-      await db.exercise.create({ data: { userId: user.id, name, muscleGroup: 'CHEST', category: 'ISOLATION' } });
+      await db.exercise.create({
+        data: { userId: user.id, name, muscleGroup: 'CHEST', category: 'ISOLATION' },
+      });
     }
-    const ambiguous = (await call(client, 'get_exercise_history', { query: 'cable fly' })) as unknown as {
+    const ambiguous = (await call(client, 'get_exercise_history', {
+      query: 'cable fly',
+    })) as unknown as {
       found: boolean;
       candidates: string[];
     };
@@ -385,5 +406,98 @@ describe('GymCoach MCP live session', () => {
     const client = await connect(user.id);
     await call(client, 'start_session', { workoutId: workout.id });
     await expect(call(client, 'log_set', { reps: 6 })).rejects.toThrow(/needs weight and reps/);
+  });
+
+  it('finds substitutes in the gym, swaps, skips, adds and removes, today or from now on', async () => {
+    const { user, press, curl, workout } = await seed('mcp-live-plan@test.dev');
+    const shoulder = (name: string, equipmentType: 'DUMBBELL' | 'MACHINE' | 'BODYWEIGHT') =>
+      db.exercise.create({
+        data: {
+          userId: user.id,
+          name,
+          muscleGroup: 'SHOULDERS_FRONT',
+          category: 'COMPOUND',
+          equipmentType,
+        },
+      });
+    const arnold = await shoulder('Arnold press', 'DUMBBELL');
+    await shoulder('Machine shoulder press', 'MACHINE');
+    const pike = await shoulder('Pike push-up', 'BODYWEIGHT');
+    const gym = await db.gym.create({ data: { userId: user.id, name: 'Home' } });
+    await db.gymEquipment.create({
+      data: { gymId: gym.id, name: 'Dumbbells', equipmentType: 'DUMBBELL' },
+    });
+    const client = await connect(user.id);
+    const started = await call(client, 'start_session', { workoutId: workout.id, gymId: gym.id });
+    const sessionId = started.session!.id;
+
+    // The machine is not in this gym; bodyweight always works.
+    const found = (await call(client, 'find_substitutes')) as unknown as {
+      for: { name: string };
+      substitutes: Array<{ exerciseId: string; name: string }>;
+    };
+    expect(found.for.name).toBe('Seated dumbbell overhead press');
+    expect(found.substitutes.map((x) => x.name).sort()).toEqual(['Arnold press', 'Pike push-up']);
+
+    // Just today: the session runs a copy, the program keeps the press.
+    const swapped = await call(client, 'swap_exercise', { exerciseId: arnold.id, scope: 'today' });
+    expect(swapped.exercises.map((e) => e.name)).toEqual(['Arnold press', 'Hammer curl']);
+    const programNames = async () =>
+      (
+        await db.programExercise.findMany({
+          where: { workoutId: workout.id },
+          orderBy: { order: 'asc' },
+          include: { exercise: true },
+        })
+      ).map((pe) => pe.exercise.name);
+    expect(await programNames()).toEqual(['Seated dumbbell overhead press', 'Hammer curl']);
+
+    // Added next, from now on: right after the current exercise today, and at
+    // the end of the saved workout.
+    const added = await call(client, 'add_session_exercise', {
+      exerciseId: pike.id,
+      next: true,
+      scope: 'program',
+    });
+    expect(added.exercises.map((e) => e.name)).toEqual([
+      'Arnold press',
+      'Pike push-up',
+      'Hammer curl',
+    ]);
+    expect(await programNames()).toEqual([
+      'Seated dumbbell overhead press',
+      'Hammer curl',
+      'Pike push-up',
+    ]);
+
+    // Skip moves on and stays on record; it can be taken back.
+    const skipped = (await call(client, 'skip_exercise')) as State & {
+      skipped: Array<{ programExerciseId: string; name: string }>;
+    };
+    expect(skipped.exercises.map((e) => e.name)).toEqual(['Pike push-up', 'Hammer curl']);
+    expect(skipped.skipped.map((x) => x.name)).toEqual(['Arnold press']);
+    const back = await call(client, 'skip_exercise', { skipped: false });
+    expect(back.exercises[0]!.name).toBe('Arnold press');
+
+    // Removing needs the trainee's confirmation.
+    const curlRow = back.exercises.find((e) => e.name === 'Hammer curl')!.programExerciseId;
+    await expect(
+      call(client, 'remove_session_exercise', { programExerciseId: curlRow, scope: 'today' }),
+    ).rejects.toThrow();
+    const removed = await call(client, 'remove_session_exercise', {
+      confirmed: true,
+      programExerciseId: curlRow,
+      scope: 'today',
+    });
+    expect(removed.exercises.map((e) => e.name)).toEqual(['Arnold press', 'Pike push-up']);
+    expect(await programNames()).toContain('Hammer curl');
+    expect(curl.id).toBeTruthy();
+    expect(press.id).toBeTruthy();
+
+    // Changes need write access, and stop once the session is finished.
+    const reader = await connect(user.id, false);
+    await expect(call(reader, 'skip_exercise')).rejects.toThrow();
+    await call(client, 'finish_session', { sessionId });
+    await expect(call(client, 'skip_exercise', { sessionId })).rejects.toThrow(/finished/);
   });
 });
