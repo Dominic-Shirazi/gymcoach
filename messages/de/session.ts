@@ -248,27 +248,31 @@ export const session = {
   exerciseMenu: {
     actions: 'Übungsaktionen',
     actionsDescription:
-      'Diese Aktionen ändern dein gespeichertes Programm, daher gelten sie auch für zukünftige Einheiten dieses Workouts.',
+      'Bei jeder Änderung wählst du: nur heute oder ab jetzt. „Ab jetzt“ ändert auch dein gespeichertes Programm.',
     replace: 'Übung ersetzen',
     replaceDescription:
-      'Wähle eine andere Übung. Sie ersetzt diese in deinem gespeicherten Programm, für diese und zukünftige Einheiten.',
+      'Wähle eine andere Übung. Danach wählst du: nur heute oder ab jetzt auch in deinem gespeicherten Programm.',
     addExercises: 'Übung hinzufügen',
     addDescription:
-      'Füge eine Übung am Ende dieses Workouts hinzu. Sie wird auch für zukünftige Einheiten in deinem Programm gespeichert.',
+      'Füge eine Übung am Ende dieses Workouts hinzu. Danach wählst du: nur heute oder ab jetzt auch in deinem gespeicherten Programm.',
     remove: 'Übung entfernen',
     removeDescription:
-      'Entferne diese Übung aus deinem gespeicherten Programm, für diese und zukünftige Einheiten.',
+      'Entferne diese Übung nur heute oder ab jetzt aus deinem gespeicherten Programm.',
     searchExercises: 'Übungen suchen',
     noExercises: 'Keine passenden Übungen.',
     favoriteChoice: 'Favorit: {name}',
     replaceConfirm:
-      'Dies ersetzt die Übung in deinem gespeicherten Programm, sodass sich auch zukünftige Einheiten ändern. Ersetzen?',
+      'Nur heute ersetzen oder ab jetzt? „Ab jetzt“ ändert auch dein gespeichertes Programm.',
     replaceLoggedWarning:
-      'Bereits in dieser Einheit geloggte Sätze bleiben in deiner Historie unter der ursprünglichen Übung, werden aber auf diesem Bildschirm nicht mehr angezeigt. Dein gespeichertes Programm ändert sich auch für zukünftige Einheiten. Ersetzen?',
+      'Bereits in dieser Einheit geloggte Sätze bleiben in deiner Historie unter der ursprünglichen Übung, werden aber auf diesem Bildschirm nicht mehr angezeigt. Nur heute ersetzen oder ab jetzt?',
     removeLoggedWarning:
-      'Bereits geloggte Sätze bleiben in der Historie, werden aber auf diesem Bildschirm nicht mehr angezeigt. Die Übung wird aus deinem gespeicherten Programm entfernt, auch für zukünftige Einheiten.',
+      'Bereits geloggte Sätze bleiben in der Historie, werden aber auf diesem Bildschirm nicht mehr angezeigt. Nur heute entfernen oder ab jetzt?',
     removeConfirm:
-      'Diese Übung aus deinem gespeicherten Programm entfernen? Zukünftige Einheiten ändern sich auch.',
+      'Nur heute entfernen oder ab jetzt? „Ab jetzt“ ändert auch dein gespeichertes Programm.',
+    addConfirm:
+      '{name} nur heute hinzufügen oder ab jetzt? „Ab jetzt“ fügt die Übung auch deinem gespeicherten Programm hinzu.',
+    justToday: 'Nur heute',
+    fromNowOn: 'Ab jetzt',
     removeLastBlocked:
       'Dies ist die einzige Übung im Workout, daher kann sie hier nicht entfernt werden. Ersetze sie stattdessen.',
     confirmReplace: 'Durch {name} ersetzen',

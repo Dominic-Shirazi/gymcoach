@@ -245,26 +245,31 @@ export const session = {
   exerciseMenu: {
     actions: 'Ações do exercício',
     actionsDescription:
-      'Estas ações mudam seu programa salvo, então também valem para as próximas sessões deste treino.',
+      'Cada mudança pergunta se vale só para hoje ou de agora em diante. "De agora em diante" também muda seu programa salvo.',
     replace: 'Substituir exercício',
     replaceDescription:
-      'Escolha outro exercício. Ele substitui este no seu programa salvo, nesta sessão e nas próximas.',
+      'Escolha outro exercício. Depois você escolhe: só hoje, ou de agora em diante também no seu programa salvo.',
     addExercises: 'Adicionar exercício',
     addDescription:
-      'Adicione um exercício ao fim deste treino. Ele também é salvo no seu programa para as próximas sessões.',
+      'Adicione um exercício ao fim deste treino. Depois você escolhe: só hoje, ou de agora em diante também no seu programa salvo.',
     remove: 'Remover exercício',
-    removeDescription: 'Remova este exercício do seu programa salvo, nesta sessão e nas próximas.',
+    removeDescription:
+      'Remova este exercício só hoje, ou do seu programa salvo de agora em diante.',
     searchExercises: 'Buscar exercícios',
     noExercises: 'Nenhum exercício encontrado.',
     favoriteChoice: 'favorito: {name}',
     replaceConfirm:
-      'Isto substitui o exercício no seu programa salvo, então as próximas sessões também mudam. Substituir?',
+      'Substituir só hoje ou de agora em diante? "De agora em diante" também muda seu programa salvo.',
     replaceLoggedWarning:
-      'As séries já registradas nesta sessão continuam no seu histórico com o exercício original, mas não aparecem mais nesta tela. Seu programa salvo também muda para as próximas sessões. Substituir?',
+      'As séries já registradas nesta sessão continuam no seu histórico com o exercício original, mas não aparecem mais nesta tela. Substituir só hoje ou de agora em diante?',
     removeLoggedWarning:
-      'As séries já registradas continuam no histórico, mas não aparecem mais nesta tela. O exercício é removido do seu programa salvo, também para as próximas sessões.',
+      'As séries já registradas continuam no histórico, mas não aparecem mais nesta tela. Remover só hoje ou de agora em diante?',
     removeConfirm:
-      'Remover este exercício do seu programa salvo? As próximas sessões também mudam.',
+      'Remover só hoje ou de agora em diante? "De agora em diante" também muda seu programa salvo.',
+    addConfirm:
+      'Adicionar {name} só hoje ou de agora em diante? "De agora em diante" também o adiciona ao seu programa salvo.',
+    justToday: 'Só hoje',
+    fromNowOn: 'De agora em diante',
     removeLastBlocked:
       'Este é o único exercício do treino, então não pode ser removido aqui. Substitua-o em vez disso.',
     confirmReplace: 'Substituir por {name}',

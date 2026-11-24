@@ -1,62 +1,24 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
-import { sessionExerciseInputSchema } from '@/lib/schemas/session';
-import { ApiError, handleApiError, parseJsonBody, requireApiUserId } from '@/lib/api';
-import { requireOpenFreestyleSession } from '@/lib/freestyle-session';
+import { sessionExerciseChangeSchema } from '@/lib/schemas/session';
+import { handleApiError, parseJsonBody, requireApiUserId } from '@/lib/api';
+import { addSessionExercise, planRowJson } from '@/lib/session-plan';
 
 interface Params {
   params: Promise<{ id: string }>;
 }
 
-// POST /api/sessions/[id]/exercises: adds an exercise to a freestyle session
-// (issue #388). The list belongs to the session alone, so no saved program
-// changes. The order is computed automatically.
+// POST /api/sessions/[id]/exercises: adds an exercise to an open session's
+// list (lib/session-plan.ts). A freestyle session (issue #388) owns its list.
+// A session run from a workout copies the workout first and changes the copy,
+// so no saved program changes, unless `scope` is "program" ("from now on"),
+// which adds the exercise to the workout too. The order is computed.
 export async function POST(req: Request, props: Params) {
   const params = await props.params;
   try {
     const userId = await requireApiUserId();
-    await requireOpenFreestyleSession(params.id, userId);
-    const data = await parseJsonBody(req, sessionExerciseInputSchema);
-
-    // The exercise must belong to the user too.
-    const exercise = await db.exercise.findFirst({
-      where: { id: data.exerciseId, userId },
-      select: { id: true },
-    });
-    if (!exercise) {
-      throw new ApiError(400, 'Invalid exercise.');
-    }
-
-    // One row per exercise, as in a workout (issue #379): a Set carries only
-    // an exerciseId, so two rows of the same exercise would share one set pool.
-    const duplicate = await db.sessionExercise.findFirst({
-      where: { sessionId: params.id, exerciseId: data.exerciseId, session: { userId } },
-      select: { id: true },
-    });
-    if (duplicate) {
-      throw new ApiError(409, 'That exercise is already in this session.');
-    }
-
-    const last = await db.sessionExercise.findFirst({
-      where: { sessionId: params.id, session: { userId } },
-      orderBy: { order: 'desc' },
-      select: { order: true },
-    });
-
-    const created = await db.sessionExercise.create({
-      data: {
-        sessionId: params.id,
-        exerciseId: data.exerciseId,
-        order: (last?.order ?? 0) + 1,
-        targetSets: data.targetSets,
-        targetRepsMin: data.targetRepsMin,
-        targetRepsMax: data.targetRepsMax,
-        targetRIR: data.targetRIR,
-        restSec: data.restSec,
-      },
-      include: { exercise: true },
-    });
-    return NextResponse.json(created, { status: 201 });
+    const { exerciseId, scope, ...targets } = await parseJsonBody(req, sessionExerciseChangeSchema);
+    const change = await addSessionExercise(userId, params.id, { exerciseId, scope, targets });
+    return NextResponse.json(await planRowJson(change), { status: 201 });
   } catch (err) {
     return handleApiError(err);
   }

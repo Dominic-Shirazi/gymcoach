@@ -1173,7 +1173,8 @@ export function SessionRunner({
           programExercises={programExercises}
           catalog={catalog}
           loggedSetCount={currentSets.length}
-          freestyleSessionId={freestyle ? session.id : undefined}
+          sessionId={session.id}
+          freestyle={freestyle}
           onChanged={(options) => {
             setExerciseMenuOpen(false);
             if (options?.selectProgramExerciseId) {

@@ -7,7 +7,6 @@ import { toast } from 'sonner';
 import type { Exercise, ProgramExercise } from '@/lib/prisma-client';
 import { favoritesFirst } from '@/lib/exercise-favorites';
 import { matchesSearch } from '@/lib/search-fold';
-import { defaultIntraSetConfig } from '@/lib/intra-set-autoregulation';
 import { addedExerciseTargets } from '@/lib/freestyle';
 import { useExerciseName } from '@/components/shared/use-exercise-name';
 import { Button } from '@/components/ui/button';
@@ -22,6 +21,7 @@ export type SessionCatalogExercise = Pick<
   'id' | 'name' | 'muscleGroup' | 'category' | 'usesBodyweight' | 'defaultRestSec' | 'isFavorite'
 >;
 type View = 'actions' | 'replace' | 'add' | 'removeConfirm';
+type Scope = 'today' | 'program';
 
 interface Props {
   open: boolean;
@@ -30,24 +30,21 @@ interface Props {
   programExercises: SessionProgramExercise[];
   catalog: SessionCatalogExercise[];
   loggedSetCount: number;
-  // Set for a freestyle session (issue #388): the list belongs to the session,
-  // so every action goes to the session's own routes and no saved program
-  // changes. Absent, the actions edit the workout the session runs.
-  freestyleSessionId?: string;
+  // Every action goes to the session's own routes (lib/session-plan.ts). On a
+  // session run from a workout each change asks "just today, or from now
+  // on?": just today changes the session's copy of the workout, from now on
+  // the saved program too. A freestyle session (issue #388) has no program,
+  // so its changes apply at once to the session.
+  sessionId: string;
+  freestyle?: boolean;
   onChanged: (options?: { selectProgramExerciseId?: string; removedProgramExerciseId?: string }) => void;
 }
 
-// Targets for a program row created from the session menu. Cardio follows the
-// repo rule (one continuous effort is one set, logged as duration/distance, see
-// lib/prompts/program-system-prompt.ts). The autoregulation config is left out:
-// the POST route derives it from the exercise.
-function additionPayload(exercise: Pick<Exercise, 'id' | 'category' | 'defaultRestSec'>) {
-  return addedExerciseTargets(exercise);
-}
-
-// A freestyle row stores targets only, so a swap sends just those: the old
-// row's when both exercises are of the same kind, the defaults otherwise.
-function freestyleReplacementPayload(
+// A swap sends targets only: the old row's when both exercises are of the
+// same kind, the new exercise's defaults otherwise (strength targets make no
+// sense for cardio and the other way round). The server resets the fatigue
+// tuning of the old exercise and keeps the row's other settings.
+function replacementPayload(
   programExercise: SessionProgramExercise,
   exercise: SessionCatalogExercise,
 ) {
@@ -65,39 +62,6 @@ function freestyleReplacementPayload(
     : addedExerciseTargets(exercise);
 }
 
-function replacementPayload(
-  programExercise: SessionProgramExercise,
-  exercise: SessionCatalogExercise,
-) {
-  // Strength targets make no sense for cardio and the other way round, so a
-  // swap across that line starts from the new exercise's defaults.
-  const sameKind =
-    (programExercise.exercise.category === 'CARDIO') === (exercise.category === 'CARDIO');
-  const targets = sameKind
-    ? {
-        exerciseId: exercise.id,
-        targetSets: programExercise.targetSets,
-        targetRepsMin: programExercise.targetRepsMin,
-        targetRepsMax: programExercise.targetRepsMax,
-        targetRIR: programExercise.targetRIR,
-        restSec: programExercise.restSec,
-      }
-    : additionPayload(exercise);
-  // The fatigue rate and load step were tuned for the old exercise, and the
-  // PUT route stores what it receives. Send the new exercise's defaults, which
-  // is what the POST route stores for a freshly added row.
-  const autoregulation = defaultIntraSetConfig(exercise);
-  return {
-    ...targets,
-    autoregulationMode: programExercise.autoregulationMode,
-    fatigueRate: autoregulation.fatigueRate,
-    loadAdjustmentPct: autoregulation.loadAdjustmentPct,
-    tempo: programExercise.tempo,
-    notes: programExercise.notes,
-    supersetGroup: programExercise.supersetGroup,
-  };
-}
-
 export function SessionExerciseMenu({
   open,
   onOpenChange,
@@ -105,7 +69,8 @@ export function SessionExerciseMenu({
   programExercises,
   catalog,
   loggedSetCount,
-  freestyleSessionId,
+  sessionId,
+  freestyle = false,
   onChanged,
 }: Props) {
   const t = useTranslations('session.exerciseMenu');
@@ -115,6 +80,7 @@ export function SessionExerciseMenu({
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [pendingReplacement, setPendingReplacement] = useState<SessionCatalogExercise | null>(null);
+  const [pendingAddition, setPendingAddition] = useState<SessionCatalogExercise | null>(null);
   // `busy` disables the buttons on the next render; the ref closes the gap
   // for a second call that arrives before that render.
   const inFlight = useRef(false);
@@ -125,13 +91,11 @@ export function SessionExerciseMenu({
   // Removing the only exercise would leave the runner on its empty state,
   // which has no Finish button. Replace stays available. A freestyle session
   // has an empty state of its own (pick an exercise), so nothing is blocked.
-  const onlyExercise = !freestyleSessionId && programExercises.length <= 1;
-  const freestyleRowsUrl = freestyleSessionId
-    ? '/api/sessions/' + encodeURIComponent(freestyleSessionId) + '/exercises'
-    : null;
-  const rowUrl = freestyleRowsUrl
-    ? freestyleRowsUrl + '/' + encodeURIComponent(programExercise.id)
-    : '/api/program-exercises/' + encodeURIComponent(programExercise.id);
+  const onlyExercise = !freestyle && programExercises.length <= 1;
+  const rowsUrl = '/api/sessions/' + encodeURIComponent(sessionId) + '/exercises';
+  const rowUrl = rowsUrl + '/' + encodeURIComponent(programExercise.id);
+  // A freestyle session has no program, so it sends no scope.
+  const scoped = <T extends object>(body: T, scope: Scope) => (freestyle ? body : { ...body, scope });
   const removeBlockedId = useId();
   const existingExerciseIds = useMemo(
     () => new Set(programExercises.map((item) => item.exerciseId)),
@@ -176,6 +140,7 @@ export function SessionExerciseMenu({
       setView('actions');
       setQuery('');
       setPendingReplacement(null);
+      setPendingAddition(null);
     }
   }
 
@@ -183,9 +148,21 @@ export function SessionExerciseMenu({
     setView(nextView);
     setQuery('');
     setPendingReplacement(null);
+    setPendingAddition(null);
   }
 
-  async function replaceExercise(exercise: SessionCatalogExercise) {
+  // The first "just today" change copies the workout onto the session, so the
+  // rows get new ids. The runner then keeps its place by position.
+  async function copiedRows(response: Response) {
+    try {
+      const body = (await response.json()) as { copied?: boolean };
+      return body.copied === true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function replaceExercise(exercise: SessionCatalogExercise, scope: Scope) {
     if (inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
@@ -193,11 +170,7 @@ export function SessionExerciseMenu({
       const response = await fetch(rowUrl, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(
-          freestyleSessionId
-            ? freestyleReplacementPayload(programExercise, exercise)
-            : replacementPayload(programExercise, exercise),
-        ),
+        body: JSON.stringify(scoped(replacementPayload(programExercise, exercise), scope)),
       });
       if (!response.ok) {
         toast.error(response.status === 409 ? t('duplicate') : t('replaceError'));
@@ -217,26 +190,28 @@ export function SessionExerciseMenu({
     }
   }
 
-  // A replace rewrites the saved program row, so it always asks first; the
+  // A replace always asks first: on a workout, just today or from now on; the
   // wording depends on whether sets were already logged on the old exercise.
   function requestReplacement(exercise: SessionCatalogExercise) {
     setPendingReplacement(exercise);
   }
 
-  async function addExercise(exercise: SessionCatalogExercise) {
+  // A freestyle session adds at once; a workout asks just today or from now on.
+  function requestAddition(exercise: SessionCatalogExercise) {
+    if (freestyle) void addExercise(exercise, 'today');
+    else setPendingAddition(exercise);
+  }
+
+  async function addExercise(exercise: SessionCatalogExercise, scope: Scope) {
     if (inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
     try {
-      const response = await fetch(
-        freestyleRowsUrl ??
-          '/api/workouts/' + encodeURIComponent(programExercise.workoutId) + '/program-exercises',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(additionPayload(exercise)),
-        },
-      );
+      const response = await fetch(rowsUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(scoped(addedExerciseTargets(exercise), scope)),
+      });
       if (!response.ok) {
         toast.error(response.status === 409 ? t('duplicate') : t('addError'));
         return;
@@ -244,6 +219,7 @@ export function SessionExerciseMenu({
       toast.success(t('added'));
       onOpenChange(false);
       setView('actions');
+      setPendingAddition(null);
       setQuery('');
       onChanged();
     } catch {
@@ -254,27 +230,80 @@ export function SessionExerciseMenu({
     }
   }
 
-  async function removeExercise() {
+  async function removeExercise(scope: Scope) {
     if (inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
     try {
-      const response = await fetch(rowUrl, { method: 'DELETE' });
+      const response = await fetch(freestyle ? rowUrl : rowUrl + '?scope=' + scope, {
+        method: 'DELETE',
+      });
       if (!response.ok) throw new Error('remove failed');
       toast.success(t('removed'));
+      const copied = await copiedRows(response);
       onOpenChange(false);
       setView('actions');
       setQuery('');
-      onChanged({
-        selectProgramExerciseId: next?.id ?? previous?.id,
-        removedProgramExerciseId: programExercise.id,
-      });
+      // After a copy the neighbours' ids changed too; the runner's position
+      // already lands on the next exercise.
+      onChanged(
+        copied
+          ? undefined
+          : {
+              selectProgramExerciseId: next?.id ?? previous?.id,
+              removedProgramExerciseId: programExercise.id,
+            },
+      );
     } catch {
       toast.error(t('removeError'));
     } finally {
       inFlight.current = false;
       setBusy(false);
     }
+  }
+
+  // The confirm buttons of a change: one button on a freestyle session, the
+  // two scopes on a workout ("Just today" first, the safe default).
+  function scopeChoices(
+    pick: (scope: Scope) => void,
+    freestyleLabel: string,
+    variant: 'default' | 'destructive' = 'default',
+  ) {
+    if (freestyle) {
+      return (
+        <Button
+          type="button"
+          className="min-h-tap"
+          variant={variant}
+          disabled={busy}
+          onClick={() => pick('today')}
+        >
+          {freestyleLabel}
+        </Button>
+      );
+    }
+    return (
+      <>
+        <Button
+          type="button"
+          className="min-h-tap"
+          variant={variant}
+          disabled={busy}
+          onClick={() => pick('today')}
+        >
+          {t('justToday')}
+        </Button>
+        <Button
+          type="button"
+          className="min-h-tap"
+          variant="secondary"
+          disabled={busy}
+          onClick={() => pick('program')}
+        >
+          {t('fromNowOn')}
+        </Button>
+      </>
+    );
   }
 
   return (
@@ -290,7 +319,7 @@ export function SessionExerciseMenu({
                 : t('remove')}
         </DialogTitle>
         <DialogDescription>
-          {freestyleSessionId
+          {freestyle
             ? t('freestyleScope')
             : view === 'actions'
               ? t('actionsDescription')
@@ -343,7 +372,7 @@ export function SessionExerciseMenu({
         {view === 'removeConfirm' && (
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              {freestyleSessionId
+              {freestyle
                 ? loggedSetCount > 0
                   ? t('freestyleRemoveLoggedWarning')
                   : t('freestyleRemoveConfirm')
@@ -351,7 +380,7 @@ export function SessionExerciseMenu({
                   ? t('removeLoggedWarning')
                   : t('removeConfirm')}
             </p>
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
               <Button
                 type="button"
                 className="min-h-tap"
@@ -361,23 +390,33 @@ export function SessionExerciseMenu({
               >
                 {t('cancel')}
               </Button>
-              <Button
-                type="button"
-                className="min-h-tap"
-                variant="destructive"
-                disabled={busy}
-                onClick={() => void removeExercise()}
-              >
-                {t('remove')}
-              </Button>
+              {scopeChoices((scope) => void removeExercise(scope), t('remove'), 'destructive')}
             </div>
           </div>
         )}
 
-        {(view === 'replace' || view === 'add') && pendingReplacement ? (
+        {view === 'add' && pendingAddition ? (
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              {freestyleSessionId
+              {t('addConfirm', { name: exerciseName(pendingAddition.name) })}
+            </p>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                className="min-h-tap"
+                variant="outline"
+                disabled={busy}
+                onClick={() => setPendingAddition(null)}
+              >
+                {t('cancel')}
+              </Button>
+              {scopeChoices((scope) => void addExercise(pendingAddition, scope), t('addExercises'))}
+            </div>
+          </div>
+        ) : (view === 'replace' || view === 'add') && pendingReplacement ? (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              {freestyle
                 ? loggedSetCount > 0
                   ? t('freestyleReplaceLoggedWarning')
                   : t('freestyleReplaceConfirm')
@@ -385,7 +424,7 @@ export function SessionExerciseMenu({
                   ? t('replaceLoggedWarning')
                   : t('replaceConfirm')}
             </p>
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
               <Button
                 type="button"
                 className="min-h-tap"
@@ -395,14 +434,10 @@ export function SessionExerciseMenu({
               >
                 {t('cancel')}
               </Button>
-              <Button
-                type="button"
-                className="min-h-tap"
-                disabled={busy}
-                onClick={() => void replaceExercise(pendingReplacement)}
-              >
-                {t('confirmReplace', { name: exerciseName(pendingReplacement.name) })}
-              </Button>
+              {scopeChoices(
+                (scope) => void replaceExercise(pendingReplacement, scope),
+                t('confirmReplace', { name: exerciseName(pendingReplacement.name) }),
+              )}
             </div>
           </div>
         ) : view === 'replace' || view === 'add' ? (
@@ -432,7 +467,7 @@ export function SessionExerciseMenu({
                     className="min-h-tap justify-start"
                     disabled={busy}
                     onClick={() =>
-                      view === 'replace' ? requestReplacement(exercise) : void addExercise(exercise)
+                      view === 'replace' ? requestReplacement(exercise) : requestAddition(exercise)
                     }
                     aria-label={
                       exercise.isFavorite

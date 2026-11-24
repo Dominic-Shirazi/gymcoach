@@ -300,6 +300,7 @@ model ProgramExercise {
   // on a cardio row, so every existing reader keeps working.
   targetDurationSec  Int?
   targetDistanceM    Float?
+  sessionCopies      SessionExercise[]
 }
 
 enum SetAutoregulationMode {
@@ -328,8 +329,10 @@ model Session {
   // and a session whose workout or program was deleted have none either.
   freestyle  Boolean   @default(false)
   // A freestyle session keeps its own exercise list here, so adding or
-  // removing an exercise never touches a saved program. Always empty for a
-  // session run from a workout.
+  // removing an exercise never touches a saved program. A session run from a
+  // workout reads the workout's rows until its list is first changed "just
+  // for today"; the rows are then copied here and the session reads this
+  // list from then on (lib/session-plan.ts).
   exercises  SessionExercise[]
   // Heart rate of an attached watch recording (issue #562, additive): the
   // average over the whole session, in bpm. 40..250 when present (enforced by
@@ -347,25 +350,46 @@ model Session {
   @@index([userId, startedAt])
 }
 
-// One exercise of a freestyle session (issue #388, additive): the row the live
-// runner shows in place of a ProgramExercise when the session has no workout.
-// An exercise appears at most once per session, like in a workout (issue #379).
+// One exercise of a session's own list: the whole list of a freestyle
+// session (issue #388), or today's copy of a workout's rows once the lifter
+// changes the workout for this session only (lib/session-plan.ts). The
+// program fields mirror ProgramExercise so a copy keeps every setting.
 model SessionExercise {
-  id            String   @id @default(cuid())
-  sessionId     String
-  session       Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  exerciseId    String
-  exercise      Exercise @relation(fields: [exerciseId], references: [id])
-  order         Int
-  targetSets    Int
-  targetRepsMin Int
-  targetRepsMax Int
-  targetRIR     Int
-  restSec       Int
+  id                 String                @id @default(cuid())
+  sessionId          String
+  session            Session               @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  exerciseId         String
+  exercise           Exercise              @relation(fields: [exerciseId], references: [id])
+  order              Int
+  targetSets         Int
+  targetRepsMin      Int
+  targetRepsMax      Int
+  targetRIR          Int
+  restSec            Int
+  // The workout row this one was copied from, so a change made "from now
+  // on" reaches the program too. NULL on freestyle rows, on rows added just
+  // for today, and once the program row is deleted.
+  programExerciseId  String?
+  programExercise    ProgramExercise?      @relation(fields: [programExerciseId], references: [id], onDelete: SetNull)
+  tempo              String?
+  notes              String?
+  supersetGroup      Int?
+  autoregulationMode SetAutoregulationMode @default(PRESERVE_RIR)
+  fatigueRate        Float?
+  loadAdjustmentPct  Float?
+  targetDurationSec  Int?
+  targetDistanceM    Float?
+  // Skipped for this session: the row leaves the runner's list but stays on
+  // record, so the coach can see what was skipped. NULL = not skipped.
+  skippedAt          DateTime?
 
-  @@unique([sessionId, exerciseId])
+  // No unique (sessionId, exerciseId): a copied workout can hold a
+  // deliberately repeated exercise (issue #429). The routes refuse a new
+  // duplicate instead, as the workout routes do (issue #379).
   @@index([sessionId, order])
+  @@index([sessionId, exerciseId])
   @@index([exerciseId])
+  @@index([programExerciseId])
 }
 
 model Gym {

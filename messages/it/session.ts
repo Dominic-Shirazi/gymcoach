@@ -249,27 +249,30 @@ export const session = {
   exerciseMenu: {
     actions: 'Azioni dell’esercizio',
     actionsDescription:
-      'Queste azioni modificano il programma salvato, quindi valgono anche per le prossime sessioni di questo allenamento.',
+      'Ogni modifica ti chiede se vale solo per oggi o d’ora in poi. «D’ora in poi» modifica anche il programma salvato.',
     replace: 'Sostituisci esercizio',
     replaceDescription:
-      'Scegli un altro esercizio. Sostituisce questo nel programma salvato, per questa sessione e le successive.',
+      'Scegli un altro esercizio. Poi scegli: solo oggi, o d’ora in poi anche nel programma salvato.',
     addExercises: 'Aggiungi esercizio',
     addDescription:
-      'Aggiungi un esercizio alla fine di questo allenamento. Viene salvato anche nel programma per le prossime sessioni.',
+      'Aggiungi un esercizio alla fine di questo allenamento. Poi scegli: solo oggi, o d’ora in poi anche nel programma salvato.',
     remove: 'Rimuovi esercizio',
-    removeDescription:
-      'Rimuovi questo esercizio dal programma salvato, per questa sessione e le successive.',
+    removeDescription: 'Rimuovi questo esercizio solo oggi, o dal programma salvato d’ora in poi.',
     searchExercises: 'Cerca esercizi',
     noExercises: 'Nessun esercizio corrispondente.',
     favoriteChoice: 'preferito: {name}',
     replaceConfirm:
-      'Questo sostituisce l’esercizio nel programma salvato, quindi cambiano anche le prossime sessioni. Sostituirlo?',
+      'Sostituirlo solo oggi o d’ora in poi? «D’ora in poi» modifica anche il programma salvato.',
     replaceLoggedWarning:
-      'Le serie già registrate in questa sessione restano nello storico con l’esercizio originale, ma non vengono più mostrate in questa schermata. Il programma salvato cambia anche per le prossime sessioni. Sostituirlo?',
+      'Le serie già registrate in questa sessione restano nello storico con l’esercizio originale, ma non vengono più mostrate in questa schermata. Sostituirlo solo oggi o d’ora in poi?',
     removeLoggedWarning:
-      'Le serie già registrate restano nello storico, ma non vengono più mostrate in questa schermata. L’esercizio viene rimosso dal programma salvato, anche per le prossime sessioni.',
+      'Le serie già registrate restano nello storico, ma non vengono più mostrate in questa schermata. Rimuoverlo solo oggi o d’ora in poi?',
     removeConfirm:
-      'Rimuovere questo esercizio dal programma salvato? Cambiano anche le prossime sessioni.',
+      'Rimuoverlo solo oggi o d’ora in poi? «D’ora in poi» modifica anche il programma salvato.',
+    addConfirm:
+      'Aggiungere {name} solo oggi o d’ora in poi? «D’ora in poi» lo aggiunge anche al programma salvato.',
+    justToday: 'Solo oggi',
+    fromNowOn: 'D’ora in poi',
     removeLastBlocked:
       'È l’unico esercizio dell’allenamento, quindi non può essere rimosso qui. Sostituiscilo invece.',
     confirmReplace: 'Sostituisci con {name}',

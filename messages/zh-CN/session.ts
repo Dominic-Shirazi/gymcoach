@@ -235,22 +235,29 @@ export const session = {
   },
   exerciseMenu: {
     actions: '动作操作',
-    actionsDescription: '这些操作会修改已保存的训练计划，因此也会影响今后执行的同一项训练。',
+    actionsDescription:
+      '每次修改都会询问：仅限今天，还是从现在起。选择“从现在起”也会修改已保存的训练计划。',
     replace: '替换动作',
-    replaceDescription: '选择另一个动作替换当前动作。修改会保存到训练计划，并影响本次及后续训练。',
+    replaceDescription:
+      '选择另一个动作。接下来可选择：仅限今天，或从现在起同时更新已保存的训练计划。',
     addExercises: '添加动作',
-    addDescription: '在本次训练末尾添加一个动作。该动作也会保存到训练计划，供后续训练使用。',
+    addDescription:
+      '在本次训练末尾添加一个动作。接下来可选择：仅限今天，或从现在起同时保存到训练计划。',
     remove: '移除动作',
-    removeDescription: '从已保存的训练计划中移除此动作，本次及后续训练都会受到影响。',
+    removeDescription: '仅在今天移除此动作，或从现在起从已保存的训练计划中移除。',
     searchExercises: '搜索动作',
     noExercises: '没有匹配的动作。',
     favoriteChoice: '已收藏：{name}',
-    replaceConfirm: '替换后，已保存的训练计划也会更新，后续训练将受到影响。确定替换吗？',
+    replaceConfirm: '仅限今天替换，还是从现在起替换？选择“从现在起”也会修改已保存的训练计划。',
     replaceLoggedWarning:
-      '本次训练中已记录的训练组仍会以原动作名称保留在训练历史中，但不再显示在当前页面。训练计划也将更新，影响后续训练。确定替换吗？',
+      '本次训练中已记录的训练组仍会以原动作名称保留在训练历史中，但不再显示在当前页面。仅限今天替换，还是从现在起替换？',
     removeLoggedWarning:
-      '已记录的训练组仍会保留在历史中，但不再显示在当前页面。该动作也会从训练计划中移除，影响后续训练。',
-    removeConfirm: '确定从训练计划中移除此动作吗？后续训练也会受到影响。',
+      '已记录的训练组仍会保留在历史中，但不再显示在当前页面。仅限今天移除，还是从现在起移除？',
+    removeConfirm: '仅限今天移除，还是从现在起移除？选择“从现在起”也会修改已保存的训练计划。',
+    addConfirm:
+      '仅限今天添加 {name}，还是从现在起添加？选择“从现在起”也会将其添加到已保存的训练计划。',
+    justToday: '仅限今天',
+    fromNowOn: '从现在起',
     removeLastBlocked: '这是本次训练唯一的动作，因此不能直接移除。请使用替换动作功能。',
     confirmReplace: '替换为 {name}',
     cancel: '取消',

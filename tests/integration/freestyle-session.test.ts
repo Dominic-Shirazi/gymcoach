@@ -6,8 +6,8 @@ import { getLastPerformances } from '@/lib/last-performance';
 
 // Freestyle sessions (issue #388): a session started without a workout. Pinned
 // here: the start route creates and resumes one, the session's own exercise
-// list is edited through its routes (owner only, open freestyle sessions
-// only, one row per exercise), nothing in a saved program changes, and the
+// list is edited through its routes (owner only, open sessions only, one row
+// per exercise), nothing in a saved program changes, and the
 // readers that used to assume a workout (history CSV, last performance, coach
 // snapshot, backup) carry the session.
 
@@ -437,7 +437,7 @@ describe('freestyle exercise list routes (issue #388)', () => {
     expect(rows[0]).toMatchObject({ id: row.id, exerciseId: owner.bench.id });
   });
 
-  it('refuses a finished session and a session that runs a workout', async () => {
+  it('refuses a finished session, and gives a workout session its own copy', async () => {
     const { user, bench, curl } = await seedUser('free-closed@test.dev');
     const { session } = await startFreestyle(user.id);
     const row = await (
@@ -463,12 +463,16 @@ describe('freestyle exercise list routes (issue #388)', () => {
     const planned = await db.session.create({
       data: { userId: user.id, workoutId: workout.id, programId: program.id },
     });
+    // Since lib/session-plan.ts a session run from a workout takes changes
+    // too: they land on the session's own copy and the program stays as it
+    // was (tests/integration/session-plan.test.ts covers the copy).
     const onWorkout = await addSessionExercise(
       jsonReq('POST', { exerciseId: curl.id, ...targets }),
       idParams(planned.id),
     );
-    expect(onWorkout.status).toBe(409);
-    expect(await db.sessionExercise.count({ where: { sessionId: planned.id } })).toBe(0);
+    expect(onWorkout.status).toBe(201);
+    expect(await db.sessionExercise.count({ where: { sessionId: planned.id } })).toBe(1);
+    expect(await db.programExercise.count({ where: { workoutId: workout.id } })).toBe(0);
   });
 
   it('lets an exercise be deleted when only a freestyle list row still names it', async () => {
@@ -551,16 +555,29 @@ describe('readers of a freestyle session (issue #388)', () => {
     const { user, session } = await loggedFreestyle('free-backup@test.dev');
     actAs(user.id);
     const dump = await (await getBackup()).json();
-    expect(dump.version).toBe(14);
+    expect(dump.version).toBe(15);
     expect(dump.sessions).toHaveLength(1);
     expect(dump.sessions[0]).toMatchObject({
       programName: null,
       workoutName: null,
       freestyle: true,
     });
+    // v15 adds the program fields of a copied workout row; a freestyle row
+    // carries their defaults.
+    const v15Defaults = {
+      tempo: null,
+      notes: null,
+      supersetGroup: null,
+      autoregulationMode: 'PRESERVE_RIR',
+      fatigueRate: null,
+      loadAdjustmentPct: null,
+      targetDurationSec: null,
+      targetDistanceM: null,
+      skippedAt: null,
+    };
     expect(dump.sessions[0].exercises).toEqual([
-      { exerciseName: 'Bench', order: 1, ...targets },
-      { exerciseName: 'Curl', order: 2, ...targets, targetSets: 3 },
+      { exerciseName: 'Bench', order: 1, ...targets, ...v15Defaults },
+      { exerciseName: 'Curl', order: 2, ...targets, targetSets: 3, ...v15Defaults },
     ]);
 
     const target = await db.user.create({ data: { email: 'free-restore@test.dev', passwordHash: 'x' } });

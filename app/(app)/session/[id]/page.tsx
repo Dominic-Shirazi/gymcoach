@@ -12,7 +12,7 @@ import { cardioDistanceUnit } from '@/lib/cardio';
 import { SessionRunner, type SerializedLastPerformance } from '@/components/session/session-runner';
 import { liveSessionGymInclude } from '@/lib/session-gym-selection';
 import { blockIndexByRow, occurrenceCounts } from '@/lib/exercise-blocks';
-import { toRunnerExercises } from '@/lib/freestyle';
+import { sessionPlanRows } from '@/lib/session-plan';
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -36,7 +36,8 @@ export default async function SessionRunPage(props: Props) {
           },
         },
       },
-      // Freestyle sessions (issue #388) keep their own exercise list.
+      // Freestyle sessions (issue #388) and workouts changed for today keep
+      // their own exercise list.
       exercises: { orderBy: { order: 'asc' }, include: { exercise: true } },
       sets: { orderBy: [{ exerciseId: 'asc' }, { setNumber: 'asc' }] },
       gym: { include: liveSessionGymInclude },
@@ -53,16 +54,26 @@ export default async function SessionRunPage(props: Props) {
   // runner gets the session's own list in the shape of a workout. The same
   // path serves an open session whose workout was deleted, which starts from
   // an empty list instead of a 404.
+  // A workout changed for today only runs its own copy (lib/session-plan.ts).
   const freestyle = session.workout == null;
-  const workout = session.workout ?? {
-    id: '',
-    programId: '',
-    name: '',
-    dayOfWeek: null,
-    order: 0,
-    program: null,
-    exercises: toRunnerExercises(session.exercises),
-  };
+  const plan = sessionPlanRows(session);
+  const workout = session.workout
+    ? { ...session.workout, exercises: plan }
+    : {
+        id: '',
+        programId: '',
+        name: '',
+        dayOfWeek: null,
+        order: 0,
+        program: null,
+        exercises: plan,
+      };
+
+  // A link made before the workout was copied names the program row; the
+  // copy keeps that id as its source.
+  const requestedRowId = searchParams.programExerciseId;
+  const initialRowId =
+    session.exercises.find((row) => row.programExerciseId === requestedRowId)?.id ?? requestedRowId;
 
   const exerciseIds = workout.exercises.map((pe) => pe.exerciseId);
   // One extra lookup per block of a deliberately repeated exercise (issue
@@ -149,7 +160,7 @@ export default async function SessionRunPage(props: Props) {
           readiness={readiness}
           deloadActive={deloadActive}
           unit={user?.unit ?? 'KG'}
-          initialProgramExerciseId={searchParams.programExerciseId}
+          initialProgramExerciseId={initialRowId}
           catalog={catalog}
           userId={auth.userId}
         />

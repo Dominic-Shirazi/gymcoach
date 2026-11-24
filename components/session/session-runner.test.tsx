@@ -938,19 +938,18 @@ describe('SessionRunner freestyle session', () => {
 
     expect(screen.getByText('Free session')).toBeInTheDocument();
     expect(screen.getByTestId('sets-table')).toHaveTextContent('pe-bench');
-    expect((menu() as MenuProps & { freestyleSessionId?: string }).freestyleSessionId).toBe('s1');
+    expect(menu()).toMatchObject({ sessionId: 's1', freestyle: true });
   });
 
-  it('keeps the plain empty state and the workout menu for a session with a workout', async () => {
+  it('keeps the plain empty state and the scoped menu for a session with a workout', async () => {
     const empty = await renderRunner(freestyleRunner([], false));
     expect(screen.getByText('No exercises in this session.')).toBeInTheDocument();
     expect(screen.queryByText('Add your first exercise')).not.toBeInTheDocument();
     empty.unmount();
 
     await renderRunner(runner([row('bench', 1)]));
-    expect(
-      (menu() as MenuProps & { freestyleSessionId?: string }).freestyleSessionId,
-    ).toBeUndefined();
+    // Same session routes, but each change asks just today or from now on.
+    expect(menu()).toMatchObject({ sessionId: 's1', freestyle: false });
     expect(screen.queryByText('Free session')).not.toBeInTheDocument();
   });
 });
