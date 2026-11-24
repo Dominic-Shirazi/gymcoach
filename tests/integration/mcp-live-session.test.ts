@@ -54,7 +54,7 @@ interface SetView {
 interface State {
   ok?: boolean;
   created?: boolean;
-  session: { id: string; finishedAt: string | null; notes: string | null } | null;
+  session: { id: string; startedAt: string; finishedAt: string | null; notes: string | null } | null;
   unit: string;
   currentExerciseIndex: number | null;
   nextSet: {
@@ -78,6 +78,10 @@ interface State {
     workingSetsDone: number;
     complete: boolean;
     sets: SetView[];
+    lastTime: {
+      sessionStartedAt: string;
+      sets: Array<{ weight: number; reps: number; rir: number | null }>;
+    } | null;
   }>;
 }
 
@@ -287,6 +291,29 @@ describe('GymCoach MCP live session', () => {
     const state = await call(client, 'log_set', { weight: 40, reps: 8, rir: 2 });
     expect(state.nextSet!.weightKg).toBeCloseTo(18.14, 2);
     expect(state.nextSet!.weight).toBe(40);
+  });
+
+  it("reports each exercise's previous session in the trainee's unit", async () => {
+    const { user, workout } = await seed('mcp-live-last-time@test.dev');
+    const client = await connect(user.id);
+
+    const first = await call(client, 'start_session', { workoutId: workout.id });
+    expect(first.exercises[0]!.lastTime).toBeNull();
+    await call(client, 'log_set', { weight: 40, reps: 10, rir: 2 });
+    await call(client, 'log_set', { weight: 40, reps: 9, rir: 1 });
+    await call(client, 'finish_session', {});
+
+    const second = await call(client, 'start_session', { workoutId: workout.id });
+    expect(second.created).toBe(true);
+    expect(second.exercises[0]!.lastTime).toMatchObject({
+      sessionStartedAt: first.session!.startedAt,
+      sets: [
+        { weight: 40, reps: 10, rir: 2 },
+        { weight: 40, reps: 9, rir: 1 },
+      ],
+    });
+    // The curl was not done last time.
+    expect(second.exercises[1]!.lastTime).toBeNull();
   });
 
   it('refuses a strength set without weight and reps instead of inventing them', async () => {
