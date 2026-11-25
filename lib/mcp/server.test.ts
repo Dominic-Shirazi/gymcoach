@@ -171,7 +171,7 @@ describe('GymCoach MCP server', () => {
           ],
         },
         liveSession: {
-          read: ['get_session_state', 'get_exercise_history', 'find_substitutes'],
+          read: ['list_workouts', 'get_session_state', 'get_exercise_history', 'find_substitutes'],
           write: [
             'start_session',
             'log_set',
@@ -201,7 +201,7 @@ describe('GymCoach MCP server', () => {
       ...(group.write ?? []).map((name) => ({ name, write: true })),
     ]);
     const groupedNames = grouped.map((entry) => entry.name);
-    expect(groupedNames).toHaveLength(36);
+    expect(groupedNames).toHaveLength(37);
     // No tool sits in two groups, and none is listed without a group.
     expect(new Set(groupedNames).size).toBe(groupedNames.length);
     expect([...allTools].sort()).toEqual([...groupedNames].sort());
