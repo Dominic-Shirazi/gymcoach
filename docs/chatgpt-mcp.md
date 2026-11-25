@@ -71,6 +71,9 @@ Read tools:
   equipment assignment, with candidate equipment)
 - `list_historical_equipment_backfills` (audit trail of applied backfills, to
   find the audit ID for an undo)
+- `list_workouts` (the active program's workouts with an estimated length and
+  when each was last done, the unfinished session, and the workout to offer
+  today; pass `timeZone` so a day scheduled for a weekday counts)
 - `get_session_state` (the unfinished or given workout session: per exercise the
   targets, form cue, sets done and completion; the current exercise; the next
   set's weight in kg and in the trainee's unit, reps, RIR and `toFailure`; the

@@ -55,6 +55,8 @@ import { getOwnedSessionState, type LiveSessionState } from '@/lib/live-session-
 import { setInputSchema, setUpdateSchema } from '@/lib/schemas/set';
 import { getExerciseHistory, HISTORY_MAX_SESSIONS } from '@/lib/exercise-history';
 import { findSubstitutes, SUBSTITUTES_MAX } from '@/lib/exercise-substitutes';
+import { resolveCalendarTimeZone } from '@/lib/history-calendar';
+import { listWorkouts } from '@/lib/workout-list';
 import {
   addSessionExercise,
   removeSessionExercise,
@@ -165,7 +167,7 @@ const MCP_CAPABILITY_GROUPS = {
     ],
   },
   liveSession: {
-    read: ['get_session_state', 'get_exercise_history', 'find_substitutes'],
+    read: ['list_workouts', 'get_session_state', 'get_exercise_history', 'find_substitutes'],
     write: [
       'start_session',
       'log_set',
@@ -1005,6 +1007,27 @@ export function createGymCoachMcpServer({ principal, baseUrl }: ServerOptions): 
     .min(0)
     .max(1100)
     .describe("Load in the trainee's unit (get_session_state unit).");
+
+  server.registerTool(
+    'list_workouts',
+    {
+      title: 'List workouts to start',
+      description:
+        "The active program's workouts in order, each with its exercise count, an estimated length in minutes (sets x (45 s + rest), cardio by its duration) and when it was last done; the unfinished session, if any; and suggestedWorkoutId: the one in progress, else one scheduled for today's weekday (needs timeZone) not done yet today, else the one after the most recently done. Pass a workout ID to start_session.",
+      inputSchema: {
+        timeZone: z
+          .string()
+          .max(64)
+          .optional()
+          .describe("The trainee's IANA time zone (e.g. America/Los_Angeles), for today's weekday."),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false, idempotentHint: true },
+    },
+    guardToolHandler(async ({ timeZone }) => {
+      const zone = timeZone ? resolveCalendarTimeZone(timeZone, '') || undefined : undefined;
+      return result(await listWorkouts(principal.userId, { timeZone: zone }));
+    }),
+  );
 
   server.registerTool(
     'get_session_state',

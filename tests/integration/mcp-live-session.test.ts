@@ -259,6 +259,45 @@ describe('GymCoach MCP live session', () => {
     );
   });
 
+  it('lists the workouts to start, with the session in progress and the one to offer', async () => {
+    const { user, workout } = await seed('mcp-list-workouts@test.dev');
+    const second = await db.workout.create({ data: { programId: workout.programId, name: 'Lower', order: 1 } });
+    const client = await connect(user.id, false);
+    type List = {
+      program: { name: string } | null;
+      workouts: Array<{ id: string; name: string; exerciseCount: number; estMinutes: number; lastDoneAt: string | null }>;
+      inProgress: { sessionId: string; workoutId: string } | null;
+      suggestedWorkoutId: string | null;
+    };
+    const list = (await call(client, 'list_workouts', { timeZone: 'America/Los_Angeles' })) as unknown as List;
+    expect(list.program!.name).toBe('Home');
+    // 2 sets x (45 + 120) + 1 set x (45 + 60) = 435 s.
+    expect(list.workouts.map((w) => [w.name, w.exerciseCount, w.estMinutes])).toEqual([
+      ['Upper', 2, 8],
+      ['Lower', 0, 0],
+    ]);
+    expect(list.inProgress).toBeNull();
+    // Nothing done yet, and the empty day is never offered.
+    expect(list.suggestedWorkoutId).toBe(workout.id);
+    expect(second.id).toBeTruthy();
+
+    const writer = await connect(user.id);
+    const started = await call(writer, 'start_session', { workoutId: workout.id });
+    const during = (await call(client, 'list_workouts')) as unknown as List;
+    expect(during.inProgress).toMatchObject({ sessionId: started.session!.id, workoutId: workout.id });
+    expect(during.suggestedWorkoutId).toBe(workout.id);
+
+    await db.session.update({ where: { id: started.session!.id }, data: { finishedAt: new Date() } });
+    const after = (await call(client, 'list_workouts')) as unknown as List;
+    expect(after.inProgress).toBeNull();
+    expect(after.workouts[0]!.lastDoneAt).not.toBeNull();
+
+    // A stranger's token sees only its own (empty) program.
+    const stranger = await db.user.create({ data: { email: 'mcp-list-stranger@test.dev', passwordHash: 'x' } });
+    const theirs = (await call(await connect(stranger.id, false), 'list_workouts')) as unknown as List;
+    expect(theirs).toEqual({ program: null, workouts: [], inProgress: null, suggestedWorkoutId: null });
+  });
+
   it('keeps sessions private to their owner and refuses writes on a read-only token', async () => {
     const owner = await seed('mcp-live-a@test.dev');
     const stranger = await seed('mcp-live-b@test.dev');
